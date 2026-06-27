@@ -52,30 +52,20 @@ function App() {
     if (!selectedFolderId) return;
 
     setIsValidating(true);
-    setStatusMessage('Fetching bookmarks from folder...');
+    setStatusMessage('Sending validation job to background thread...');
 
-    chrome.bookmarks.getSubTree(selectedFolderId, async (subTree) => {
-      const folderNode = subTree[0];
-      // Filter out sub-folders; we only want actual URLs
-      const bookmarkLinks = folderNode.children?.filter(node => node.url) || [];
-
-      if (bookmarkLinks.length === 0) {
-        setStatusMessage('No links found in this folder.');
-        setIsValidating(false);
-        return;
+    // Send message to the background service worker
+    chrome.runtime.sendMessage(
+      { action: 'START_VALIDATION', folderId: selectedFolderId },
+      (response) => {
+        if (response && response.status === 'started') {
+          setStatusMessage(
+            'Validation running safely in background. You can close this popup!'
+          );
+          setIsValidating(false);
+        }
       }
-
-      setStatusMessage(`Found ${bookmarkLinks.length} links. Validating...`);
-
-      // Placeholder for your validation logic
-      for (const link of bookmarkLinks) {
-        console.log(`Validating: ${link.url}`);
-        // You will implement the actual link checking here
-      }
-
-      setStatusMessage('Validation complete! Check console for logs.');
-      setIsValidating(false);
-    });
+    );
   };
 
   return (
@@ -83,7 +73,10 @@ function App() {
       <h3>Bookmark Validator</h3>
 
       <div style={{ marginBottom: '12px' }}>
-        <label htmlFor="folder-select" style={{ display: 'block', marginBottom: '4px' }}>
+        <label
+          htmlFor="folder-select"
+          style={{ display: 'block', marginBottom: '4px' }}
+        >
           Select Folder:
         </label>
         <select
@@ -111,7 +104,7 @@ function App() {
           color: 'white',
           border: 'none',
           borderRadius: '4px',
-          cursor: isValidating ? 'not-allowed' : 'pointer'
+          cursor: isValidating ? 'not-allowed' : 'pointer',
         }}
       >
         {isValidating ? 'Validating...' : 'Begin Validation'}
