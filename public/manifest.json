@@ -3,7 +3,7 @@
   "name": "Ultimate Bookmark Manager",
   "version": "1.0.0",
   "description": "A bookmark manager for Chrome browser bookmarks.",
-  "permissions": ["bookmarks"],
+  "permissions": ["bookmarks", "storage"],
   "action": {
     "default_popup": "index.html"
   },

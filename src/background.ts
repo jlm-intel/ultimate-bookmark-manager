@@ -27,17 +27,46 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true;
 });
 
+// src/background.ts
+
 async function runValidation(folderId: string) {
   isValidationRunning = true;
   currentStatusMessage = 'Fetching bookmarks...';
-  console.log(`[INIT] Started validation for folder ID: ${folderId}`);
 
   try {
+    let timeoutSecondsSetting: number | string = 5.0;
+
+    // Direct fetch with error catching - no rigid 'if' environment checks needed here!
+    try {
+      const storage = (await chrome.storage.local.get('timeoutSeconds')) as {
+        timeoutSeconds?: number | string;
+      };
+      if (storage.timeoutSeconds !== undefined) {
+        timeoutSecondsSetting = storage.timeoutSeconds;
+      }
+    } catch (storageError) {
+      console.log(
+        '[STORAGE NOTICE] Could not read from chrome.storage, using fallback default.',
+        storageError
+      );
+    }
+
+    // 2. Safe parsing implementation
+    const timeoutDurationMs =
+      typeof timeoutSecondsSetting === 'number'
+        ? timeoutSecondsSetting * 1000
+        : parseFloat(timeoutSecondsSetting) * 1000;
+
+    console.log(
+      `[INIT] Using timeout duration: ${timeoutSecondsSetting}s (${timeoutDurationMs}ms)`
+    );
+
+    // ... rest of your code (fetching subtree, loop, etc.) ...
+    // ... rest of your code ...
     const subTree = await chrome.bookmarks.getSubTree(folderId);
     const bookmarkLinks = subTree[0].children?.filter((node) => node.url) || [];
 
     if (bookmarkLinks.length === 0) {
-      console.log('[INFO] No links found to validate.');
       currentStatusMessage = 'No links found to validate.';
       isValidationRunning = false;
       return;
@@ -45,7 +74,6 @@ async function runValidation(folderId: string) {
 
     const failedBookmarks: chrome.bookmarks.BookmarkTreeNode[] = [];
     const total = bookmarkLinks.length;
-    console.log(`[START] Found ${total} total bookmarks to verify.`);
 
     for (let i = 0; i < total; i++) {
       const link = bookmarkLinks[i];
@@ -54,44 +82,33 @@ async function runValidation(folderId: string) {
       const currentItemNumber = i + 1;
       currentStatusMessage = `Checking link ${currentItemNumber} of ${total}...`;
 
-      // 1. CRITICAL LOG: Print right before attempting the fetch
-      console.log(
-        `[CHECKING] Item ${currentItemNumber}/${total} | Title: "${link.title}" | URL: ${link.url}`
-      );
-
       try {
-        // 2. DEFENSIVE FIX: Implement a 5-second network timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        // 2. Apply the dynamic timeout duration variable here
+        const timeoutId = setTimeout(
+          () => controller.abort(),
+          timeoutDurationMs
+        );
 
         const response = await fetch(link.url, {
           method: 'HEAD',
           mode: 'no-cors',
-          signal: controller.signal, // Attaches the abort control
+          signal: controller.signal,
         });
 
-        clearTimeout(timeoutId); // Clear timeout if network responds quickly
-
-        // 3. LOG SUCCESS: The domain responded
-        console.log(
-          `[RESPONSE] Item ${currentItemNumber}/${total} returned status: ${response.status}`
-        );
+        clearTimeout(timeoutId);
 
         if (response.status >= 400) {
           failedBookmarks.push(link);
         }
       } catch (error: any) {
-        // If the error was explicitly thrown by our AbortController timeout
         if (error.name === 'AbortError') {
           console.error(
-            `[TIMEOUT ALERT] Item ${currentItemNumber}/${total} took longer than 5 seconds to respond! Skimming past it. URL: ${link.url}`
+            `[TIMEOUT ALERT] Item ${currentItemNumber}/${total} stalled past ${timeoutSecondsSetting}s! URL: ${link.url}`
           );
         } else {
-          console.error(
-            `[NETWORK ERROR] Item ${currentItemNumber}/${total} failed: ${error.message}`
-          );
+          failedBookmarks.push(link);
         }
-        failedBookmarks.push(link);
       }
     }
 
@@ -106,8 +123,7 @@ async function runValidation(folderId: string) {
   } catch (err) {
     console.error('[FATAL ERROR] Exception in validation loop:', err);
     currentStatusMessage = 'An error occurred during validation.';
-  }
-  {
+  } finally {
     isValidationRunning = false;
     console.log(
       '[FINISHED] Background validation worker has returned to idle state.'
