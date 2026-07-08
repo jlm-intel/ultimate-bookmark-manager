@@ -28,18 +28,40 @@ function App() {
   };
 
   useEffect(() => {
-    // 1. Fetch Bookmark Folders
+    // 1. Fetch Bookmark Folders with full breadcrumb paths
     if (typeof chrome !== 'undefined' && chrome.bookmarks) {
       chrome.bookmarks.getTree((treeNodes) => {
         const folderList: BookmarkFolder[] = [];
-        const findFolders = (nodes: chrome.bookmarks.BookmarkTreeNode[]) => {
+
+        // We add a 'currentPath' parameter to track the breadcrumbs recursively
+        const findFolders = (
+          nodes: chrome.bookmarks.BookmarkTreeNode[],
+          currentPath: string = ''
+        ) => {
           for (const node of nodes) {
             if (node.children) {
-              folderList.push({ id: node.id, title: node.title || 'Root' });
-              findFolders(node.children);
+              // Skip tracking names for the invisible root node arrays if they lack titles
+              const nodeTitle = node.title || (node.id === '0' ? '' : 'Root');
+
+              // Build the folder's display name trail
+              const newPath = currentPath
+                ? `${currentPath} > ${nodeTitle}`
+                : nodeTitle;
+
+              // Only add folders that have an actual name/presence to display
+              if (nodeTitle) {
+                folderList.push({
+                  id: node.id,
+                  title: newPath, // This now stores the full path! e.g., "Bookmarks Bar > News"
+                });
+              }
+
+              // Pass the updated path down to this folder's children
+              findFolders(node.children, newPath);
             }
           }
         };
+
         findFolders(treeNodes);
         setFolders(folderList);
         if (folderList.length > 0) setSelectedFolderId(folderList[0].id);
@@ -88,9 +110,15 @@ function App() {
   const handleValidate = () => {
     if (!selectedFolderId) return;
     setIsWorkerRunning(true);
+
+    // Find the title/path of the folder matching our selected ID
+    const selectedFolder = folders.find((f) => f.id === selectedFolderId);
+    const folderPath = selectedFolder ? selectedFolder.title : selectedFolderId;
+
     chrome.runtime.sendMessage({
       action: 'START_VALIDATION',
       folderId: selectedFolderId,
+      folderPath: folderPath, // <-- Send the path string to the background script
     });
   };
 
@@ -111,7 +139,13 @@ function App() {
           value={selectedFolderId}
           onChange={(e) => setSelectedFolderId(e.target.value)}
           disabled={isWorkerRunning}
-          style={{ width: '100%', padding: '6px' }}
+          style={{
+            width: '100%',
+            padding: '6px',
+            textOverflow: 'ellipsis', // Truncates overly long paths with '...'
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+          }}
         >
           {folders.map((folder) => (
             <option key={folder.id} value={folder.id}>

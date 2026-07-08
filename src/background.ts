@@ -5,10 +5,11 @@ let currentStatusMessage = 'Idle';
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.action === 'START_VALIDATION') {
-    const { folderId } = message;
+    // Extract folderPath alongside folderId
+    const { folderId, folderPath } = message;
 
     if (!isValidationRunning) {
-      runValidation(folderId);
+      runValidation(folderId, folderPath || folderId); // <-- Pass it forward
       sendResponse({ status: 'started' });
     } else {
       sendResponse({ status: 'already_running' });
@@ -24,11 +25,68 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true;
 });
 
-async function runValidation(folderId: string) {
+// Create context menus together on install
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({
+    id: 'whitelist-domain',
+    title: 'Whitelist this domain',
+    contexts: ['page', 'link'],
+  });
+
+  chrome.contextMenus.create({
+    id: 'whitelist-url',
+    title: 'Whitelist this URL',
+    contexts: ['page', 'link'],
+  });
+});
+
+// Handle Context Menu Clicks with Storage Persistence
+chrome.contextMenus.onClicked.addListener(async (info) => {
+  const urlString = info.linkUrl || info.pageUrl;
+  if (!urlString) return;
+
+  if (info.menuItemId === 'whitelist-domain') {
+    try {
+      const domain = new URL(urlString).hostname;
+
+      // Add explicit type casting here:
+      const result = (await chrome.storage.local.get({
+        whitelistedDomains: [],
+      })) as { whitelistedDomains: string[] };
+      const currentDomains: string[] = result.whitelistedDomains;
+
+      if (!currentDomains.includes(domain)) {
+        currentDomains.push(domain);
+        await chrome.storage.local.set({ whitelistedDomains: currentDomains });
+        console.log(`[WHITELIST] Successfully saved domain: ${domain}`);
+      }
+    } catch (e) {
+      console.error('Failed to whitelist domain:', e);
+    }
+  } else if (info.menuItemId === 'whitelist-url') {
+    try {
+      // Add explicit type casting here:
+      const result = (await chrome.storage.local.get({
+        whitelistedUrls: [],
+      })) as { whitelistedUrls: string[] };
+      const currentUrls: string[] = result.whitelistedUrls;
+
+      if (!currentUrls.includes(urlString)) {
+        currentUrls.push(urlString);
+        await chrome.storage.local.set({ whitelistedUrls: currentUrls });
+        console.log(`[WHITELIST] Successfully saved URL: ${urlString}`);
+      }
+    } catch (e) {
+      console.error('Failed to whitelist URL:', e);
+    }
+  }
+});
+
+async function runValidation(folderId: string, folderPath: string) {
   isValidationRunning = true;
   currentStatusMessage = 'Fetching bookmarks...';
 
-  const RULE_ID = 1; // Unique ID for our declarative rule
+  const RULE_ID = 1;
   const fileLogLines: string[] = [];
   const logAndTrack = (text: string, isWarning = false) => {
     const timestamp = new Date().toISOString();
@@ -37,21 +95,21 @@ async function runValidation(folderId: string) {
     else console.log(text);
   };
 
-  logAndTrack(`[INIT] Starting validation for folder ID: ${folderId}`);
+  logAndTrack(
+    `[INIT] Starting validation for folder ID: ${folderId}, Folder Path: ${folderPath}`
+  );
 
   try {
-    // --- NEW: INJECT BROWSER USER-AGENT ---
+    // --- INJECT BROWSER USER-AGENT ---
     if (typeof chrome !== 'undefined' && chrome.declarativeNetRequest) {
       logAndTrack(
         `[CONFIG] Injecting Chrome Browser User-Agent ID to bypass bot filters.`
       );
-
-      // Define a standard, real-world Windows Chrome User-Agent string
       const realBrowserAgent =
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
       await chrome.declarativeNetRequest.updateSessionRules({
-        removeRuleIds: [RULE_ID], // Clear any old rule first
+        removeRuleIds: [RULE_ID],
         addRules: [
           {
             id: RULE_ID,
@@ -67,7 +125,6 @@ async function runValidation(folderId: string) {
               ],
             },
             condition: {
-              // Only apply this header change to requests sent by our extension's background worker thread
               initiatorDomains: [chrome.runtime.id],
               resourceTypes: [
                 chrome.declarativeNetRequest.ResourceType.XMLHTTPREQUEST,
@@ -78,15 +135,28 @@ async function runValidation(folderId: string) {
       });
     }
 
+    // Load Settings and Whitelists from Storage
     let timeoutSecondsSetting: number | string = 5.0;
+    let whitelistedDomains: string[] = [];
+    let whitelistedUrls: string[] = [];
+
     try {
-      const storage = (await chrome.storage.local.get('timeoutSeconds')) as {
-        timeoutSeconds?: number | string;
+      // Add explicit comprehensive type casting here:
+      const storage = (await chrome.storage.local.get({
+        timeoutSeconds: 5.0,
+        whitelistedDomains: [],
+        whitelistedUrls: [],
+      })) as {
+        timeoutSeconds: number | string;
+        whitelistedDomains: string[];
+        whitelistedUrls: string[];
       };
-      if (storage.timeoutSeconds !== undefined)
-        timeoutSecondsSetting = storage.timeoutSeconds;
+
+      timeoutSecondsSetting = storage.timeoutSeconds;
+      whitelistedDomains = storage.whitelistedDomains;
+      whitelistedUrls = storage.whitelistedUrls;
     } catch (e) {
-      // Storage unavailable fallback handled implicitly
+      // Storage unavailable fallbacks handled implicitly
     }
 
     const timeoutDurationMs =
@@ -97,12 +167,14 @@ async function runValidation(folderId: string) {
     logAndTrack(
       `[CONFIG] Using timeout configuration: ${timeoutSecondsSetting}s`
     );
+    logAndTrack(
+      `[CONFIG] Loaded ${whitelistedDomains.length} domains and ${whitelistedUrls.length} URLs in whitelist.`
+    );
 
     const subTree = await chrome.bookmarks.getSubTree(folderId);
     const bookmarkLinks = subTree[0].children?.filter((node) => node.url) || [];
     const total = bookmarkLinks.length;
 
-    // --- CRITICAL FIX: The missing declaration array ---
     const failedBookmarks: chrome.bookmarks.BookmarkTreeNode[] = [];
 
     for (let i = 0; i < total; i++) {
@@ -111,6 +183,37 @@ async function runValidation(folderId: string) {
 
       const currentItemNumber = i + 1;
       currentStatusMessage = `Checking link ${currentItemNumber} of ${total}...`;
+
+      // --- EVALUATE WHITELISTS BEFORE SCANNING ---
+      let isWhitelisted = false;
+      let whitelistReason = '';
+
+      // 1. Exact URL match check
+      if (whitelistedUrls.includes(link.url)) {
+        isWhitelisted = true;
+        whitelistReason = 'Exact URL is whitelisted';
+      }
+      // 2. Domain match check
+      else {
+        try {
+          const currentDomain = new URL(link.url).hostname;
+          if (whitelistedDomains.includes(currentDomain)) {
+            isWhitelisted = true;
+            whitelistReason = `Domain (${currentDomain}) is whitelisted`;
+          }
+        } catch (urlErr) {
+          // Malformed bookmark URL safety catch
+        }
+      }
+
+      if (isWhitelisted) {
+        logAndTrack(
+          `[SKIPPED] Item ${currentItemNumber}/${total} | Reason: ${whitelistReason} | URL: ${link.url}`
+        );
+        continue; // Bypasses network request entirely, keeping bookmark where it is
+      }
+
+      // --- PROCEED WITH NORMAL SCAN IF NOT WHITELISTED ---
       logAndTrack(
         `[CHECKING] Item ${currentItemNumber}/${total} | URL: ${link.url}`
       );
@@ -197,7 +300,7 @@ async function runValidation(folderId: string) {
     console.error('[FATAL ERROR] Exception in validation loop:', err);
     currentStatusMessage = 'An error occurred during validation.';
   } finally {
-    // --- NEW: CLEAN UP OUR RULES ---
+    // --- CLEAN UP DEE RULES ---
     if (typeof chrome !== 'undefined' && chrome.declarativeNetRequest) {
       try {
         await chrome.declarativeNetRequest.updateSessionRules({
@@ -228,9 +331,20 @@ async function moveFailedBookmarks(
   if (existingFolders.length > 0) {
     reviewFolderId = existingFolders[0].id;
   } else {
+    // 1. Fetch the absolute top level root structure dynamically
+    const rootNodes = await chrome.bookmarks.getTree();
+
+    // 2. Safely grab the first available root branch (usually 'Root' or 'Bookmarks Bar')
+    const primaryRootNode = rootNodes[0]?.children?.[0] || rootNodes[0];
+    const safeParentId = primaryRootNode.id;
+
+    console.log(
+      `[SETUP] Creating review destination folder under safe root parent ID: ${safeParentId}`
+    );
+
     const newFolder = await chrome.bookmarks.create({
       title: FOLDER_NAME,
-      parentId: '2',
+      parentId: safeParentId, // Dynamic assignment replaces hardcoded '2'
     });
     reviewFolderId = newFolder.id;
   }
