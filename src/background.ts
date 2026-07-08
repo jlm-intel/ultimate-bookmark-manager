@@ -28,12 +28,11 @@ async function runValidation(folderId: string) {
   isValidationRunning = true;
   currentStatusMessage = 'Fetching bookmarks...';
 
+  const RULE_ID = 1; // Unique ID for our declarative rule
   const fileLogLines: string[] = [];
   const logAndTrack = (text: string, isWarning = false) => {
     const timestamp = new Date().toISOString();
-    const formattedLine = `[${timestamp}] ${text}`;
-    fileLogLines.push(formattedLine);
-
+    fileLogLines.push(`[${timestamp}] ${text}`);
     if (isWarning) console.warn(text);
     else console.log(text);
   };
@@ -41,6 +40,44 @@ async function runValidation(folderId: string) {
   logAndTrack(`[INIT] Starting validation for folder ID: ${folderId}`);
 
   try {
+    // --- NEW: INJECT BROWSER USER-AGENT ---
+    if (typeof chrome !== 'undefined' && chrome.declarativeNetRequest) {
+      logAndTrack(
+        `[CONFIG] Injecting Chrome Browser User-Agent ID to bypass bot filters.`
+      );
+
+      // Define a standard, real-world Windows Chrome User-Agent string
+      const realBrowserAgent =
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+      await chrome.declarativeNetRequest.updateSessionRules({
+        removeRuleIds: [RULE_ID], // Clear any old rule first
+        addRules: [
+          {
+            id: RULE_ID,
+            priority: 1,
+            action: {
+              type: chrome.declarativeNetRequest.RuleActionType.MODIFY_HEADERS,
+              requestHeaders: [
+                {
+                  header: 'user-agent',
+                  operation: chrome.declarativeNetRequest.HeaderOperation.SET,
+                  value: realBrowserAgent,
+                },
+              ],
+            },
+            condition: {
+              // Only apply this header change to requests sent by our extension's background worker thread
+              initiatorDomains: [chrome.runtime.id],
+              resourceTypes: [
+                chrome.declarativeNetRequest.ResourceType.XMLHTTPREQUEST,
+              ],
+            },
+          },
+        ],
+      });
+    }
+
     let timeoutSecondsSetting: number | string = 5.0;
     try {
       const storage = (await chrome.storage.local.get('timeoutSeconds')) as {
@@ -90,7 +127,6 @@ async function runValidation(folderId: string) {
 
         let response = await fetch(link.url, {
           method: 'HEAD',
-          mode: 'no-cors',
           signal: controller.signal,
         });
         clearTimeout(timeoutId);
@@ -109,7 +145,6 @@ async function runValidation(folderId: string) {
 
           response = await fetch(link.url, {
             method: 'GET',
-            mode: 'no-cors',
             signal: getController.signal,
           });
           clearTimeout(getTimeoutId);
@@ -162,6 +197,20 @@ async function runValidation(folderId: string) {
     console.error('[FATAL ERROR] Exception in validation loop:', err);
     currentStatusMessage = 'An error occurred during validation.';
   } finally {
+    // --- NEW: CLEAN UP OUR RULES ---
+    if (typeof chrome !== 'undefined' && chrome.declarativeNetRequest) {
+      try {
+        await chrome.declarativeNetRequest.updateSessionRules({
+          removeRuleIds: [RULE_ID],
+        });
+        console.log(
+          '[FINISHED] Cleared session User-Agent injection rules cleanly.'
+        );
+      } catch (e) {
+        console.error('Failed to clean up net rules:', e);
+      }
+    }
+
     isValidationRunning = false;
     console.log(
       '[FINISHED] Background validation worker has returned to idle state.'
