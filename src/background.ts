@@ -25,7 +25,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.action === 'PURGE_BROKEN_BOOKMARKS') {
     (async () => {
       try {
-        const FOLDER_NAME = 'Broken Bookmarks Review';
+        const FOLDER_NAME = 'Broken Bookmarks Quarantine';
         const existingFolders = await chrome.bookmarks.search({
           title: FOLDER_NAME,
         });
@@ -33,7 +33,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         if (existingFolders.length === 0) {
           sendResponse({
             success: false,
-            message: 'Review folder does not exist.',
+            message: 'Quarantine folder does not exist.',
           });
           return;
         }
@@ -57,7 +57,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         }
 
         console.log(
-          `[PURGE] Successfully deleted ${children.length} bookmarks from the review folder.`
+          `[PURGE] Successfully deleted ${children.length} bookmarks from the quarantine folder.`
         );
         sendResponse({
           success: true,
@@ -201,14 +201,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 // Create context menus together on install
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
-    id: 'whitelist-domain',
-    title: 'Whitelist this domain',
+    id: 'skiplist-domain',
+    title: 'Skip this domain',
     contexts: ['page', 'link'],
   });
 
   chrome.contextMenus.create({
-    id: 'whitelist-url',
-    title: 'Whitelist this URL',
+    id: 'skiplist-url',
+    title: 'Skip this URL',
     contexts: ['page', 'link'],
   });
 });
@@ -218,36 +218,36 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
   const urlString = info.linkUrl || info.pageUrl;
   if (!urlString) return;
 
-  if (info.menuItemId === 'whitelist-domain') {
+  if (info.menuItemId === 'skiplist-domain') {
     try {
       const domain = new URL(urlString).hostname;
       const result = (await chrome.storage.local.get({
-        whitelistedDomains: [],
-      })) as { whitelistedDomains: string[] };
-      const currentDomains: string[] = result.whitelistedDomains;
+        skiplistedDomains: [],
+      })) as { skiplistedDomains: string[] };
+      const currentDomains: string[] = result.skiplistedDomains;
 
       if (!currentDomains.includes(domain)) {
         currentDomains.push(domain);
-        await chrome.storage.local.set({ whitelistedDomains: currentDomains });
+        await chrome.storage.local.set({ skiplistedDomains: currentDomains });
         console.log(`[WHITELIST] Successfully saved domain: ${domain}`);
       }
     } catch (e) {
-      console.error('Failed to whitelist domain:', e);
+      console.error('Failed to skiplist domain:', e);
     }
-  } else if (info.menuItemId === 'whitelist-url') {
+  } else if (info.menuItemId === 'skiplist-url') {
     try {
       const result = (await chrome.storage.local.get({
-        whitelistedUrls: [],
-      })) as { whitelistedUrls: string[] };
-      const currentUrls: string[] = result.whitelistedUrls;
+        skiplistedUrls: [],
+      })) as { skiplistedUrls: string[] };
+      const currentUrls: string[] = result.skiplistedUrls;
 
       if (!currentUrls.includes(urlString)) {
         currentUrls.push(urlString);
-        await chrome.storage.local.set({ whitelistedUrls: currentUrls });
+        await chrome.storage.local.set({ skiplistedUrls: currentUrls });
         console.log(`[WHITELIST] Successfully saved URL: ${urlString}`);
       }
     } catch (e) {
-      console.error('Failed to whitelist URL:', e);
+      console.error('Failed to skiplist URL:', e);
     }
   }
 });
@@ -305,25 +305,25 @@ async function runValidation(folderId: string, folderPath: string) {
       });
     }
 
-    // Load Settings and Whitelists from Storage
+    // Load Settings and Skiplists from Storage
     let timeoutSecondsSetting: number | string = 5.0;
-    let whitelistedDomains: string[] = [];
-    let whitelistedUrls: string[] = [];
+    let skiplistedDomains: string[] = [];
+    let skiplistedUrls: string[] = [];
 
     try {
       const storage = (await chrome.storage.local.get({
         timeoutSeconds: 5.0,
-        whitelistedDomains: [],
-        whitelistedUrls: [],
+        skiplistedDomains: [],
+        skiplistedUrls: [],
       })) as {
         timeoutSeconds: number | string;
-        whitelistedDomains: string[];
-        whitelistedUrls: string[];
+        skiplistedDomains: string[];
+        skiplistedUrls: string[];
       };
 
       timeoutSecondsSetting = storage.timeoutSeconds;
-      whitelistedDomains = storage.whitelistedDomains;
-      whitelistedUrls = storage.whitelistedUrls;
+      skiplistedDomains = storage.skiplistedDomains;
+      skiplistedUrls = storage.skiplistedUrls;
     } catch (e) {
       // Storage unavailable fallbacks handled implicitly
     }
@@ -337,7 +337,7 @@ async function runValidation(folderId: string, folderPath: string) {
       `[CONFIG] Using timeout configuration: ${timeoutSecondsSetting}s`
     );
     logAndTrack(
-      `[CONFIG] Loaded ${whitelistedDomains.length} domains and ${whitelistedUrls.length} URLs in whitelist.`
+      `[CONFIG] Loaded ${skiplistedDomains.length} domains and ${skiplistedUrls.length} URLs in skiplist.`
     );
 
     const subTree = await chrome.bookmarks.getSubTree(folderId);
@@ -354,27 +354,27 @@ async function runValidation(folderId: string, folderPath: string) {
       currentStatusMessage = `Checking link ${currentItemNumber} of ${total}...`;
 
       // --- EVALUATE WHITELISTS BEFORE SCANNING ---
-      let isWhitelisted = false;
-      let whitelistReason = '';
+      let isSkiplisted = false;
+      let skiplistReason = '';
 
-      if (whitelistedUrls.includes(link.url)) {
-        isWhitelisted = true;
-        whitelistReason = 'Exact URL is whitelisted';
+      if (skiplistedUrls.includes(link.url)) {
+        isSkiplisted = true;
+        skiplistReason = 'Exact URL is skiplisted';
       } else {
         try {
           const currentDomain = new URL(link.url).hostname;
-          if (whitelistedDomains.includes(currentDomain)) {
-            isWhitelisted = true;
-            whitelistReason = `Domain (${currentDomain}) is whitelisted`;
+          if (skiplistedDomains.includes(currentDomain)) {
+            isSkiplisted = true;
+            skiplistReason = `Domain (${currentDomain}) is skiplisted`;
           }
         } catch (urlErr) {
           // Malformed bookmark URL safety catch
         }
       }
 
-      if (isWhitelisted) {
+      if (isSkiplisted) {
         logAndTrack(
-          `[SKIPPED] Item ${currentItemNumber}/${total} | Reason: ${whitelistReason} | URL: ${link.url}`
+          `[SKIPPED] Item ${currentItemNumber}/${total} | Reason: ${skiplistReason} | URL: ${link.url}`
         );
         continue;
       }
@@ -490,7 +490,7 @@ async function runValidation(folderId: string, folderPath: string) {
 async function moveFailedBookmarks(
   failedNodes: chrome.bookmarks.BookmarkTreeNode[]
 ) {
-  const FOLDER_NAME = 'Broken Bookmarks Review';
+  const FOLDER_NAME = 'Broken Bookmarks Quarantine';
   const existingFolders = await chrome.bookmarks.search({ title: FOLDER_NAME });
   let reviewFolderId = '';
 
@@ -502,7 +502,7 @@ async function moveFailedBookmarks(
     const safeParentId = primaryRootNode.id;
 
     console.log(
-      `[SETUP] Creating review destination folder under safe root parent ID: ${safeParentId}`
+      `[SETUP] Creating quarantine destination folder under safe root parent ID: ${safeParentId}`
     );
 
     const newFolder = await chrome.bookmarks.create({

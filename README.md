@@ -1,6 +1,6 @@
 # Ultimate Bookmark Manager & Validator
 
-A modern, high-performance Chrome Extension built with **Vite**, **React**, and **TypeScript** (Manifest V3). This tool dynamically traverses nested bookmark folder hierarchies, verifies URL statuses using optimized networking handshakes, respects custom domain/URL whitelists via context menus, and compiles detailed downloadable text reports.
+A modern, high-performance Chrome Extension built with **Vite**, **React**, and **TypeScript** (Manifest V3). This tool dynamically traverses nested bookmark folder hierarchies, verifies URL statuses using optimized networking handshakes, respects custom domain/URL skiplists via context menus, and compiles detailed downloadable text reports.
 
 ---
 
@@ -9,9 +9,9 @@ A modern, high-performance Chrome Extension built with **Vite**, **React**, and 
 - **Hierarchical Breadcrumbs**: Recursive folder-crawler that shows full nested folder paths (`Folder > Subfolder`) inside the UI dropdown.
 - **Smarter Validation Loop**: Optimized network checking that attempts fast `HEAD` requests and seamlessly falls back to `GET` requests to bypass rigid server blocks.
 - **Persistent Configurable Timeouts**: Dynamically adjustable float-point network timeouts saved securely to `chrome.storage.local`.
-- **Context Menu Whitelisting**: Right-click anywhere on a live page or hyperlink to quickly whitelist specific URLs or entire domains from being scanned.
+- **Context Menu Skiplisting**: Right-click anywhere on a live page or hyperlink to quickly skiplist specific URLs or entire domains from being scanned.
 - **Automatic Report Delivery**: Generates and auto-downloads a timestamped `.txt` summary file upon validation loop completion.
-- **Safe Structural Backups**: Moves broken links into a dedicated, dynamically allocated `Broken Bookmarks Review` folder with a one-click purge utility.
+- **Safe Structural Backups**: Moves broken links into a dedicated, dynamically allocated `Broken Bookmarks Quarantine` folder with a one-click purge utility.
 
 ---
 
@@ -79,4 +79,4 @@ The background service worker utilizes the chrome.declarativeNetRequest API to d
 
 ### Safe Invalidation Lifecycles
 
-If a bookmark is flagged as broken, it isn't deleted outright. It is appended to a staging array and cleanly moved via chrome.bookmarks.move into a review silo. The Empty Review Folder safety utility uses backwards-loop iteration logic to safely delete nested configurations without breaking target indices.
+If a bookmark is flagged as broken, it isn't deleted outright. It is appended to a staging array and cleanly moved via chrome.bookmarks.move into a review silo. The Empty Quarantine Folder safety utility uses backwards-loop iteration logic to safely delete nested configurations without breaking target indices.

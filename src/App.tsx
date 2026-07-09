@@ -106,12 +106,12 @@ function App() {
 
   const handlePurgeBroken = () => {
     const confirmed = window.confirm(
-      'Are you sure you want to permanently delete ALL bookmarks inside the "Broken Bookmarks Review" folder?'
+      'Are you sure you want to permanently delete ALL bookmarks inside the "Broken Bookmarks Quarantine" folder?'
     );
     if (!confirmed) return;
 
     if (typeof chrome !== 'undefined' && chrome.runtime) {
-      setStatusMessage('Purging broken bookmarks folder...');
+      setStatusMessage('Purging broken bookmarks quarantine folder...');
       chrome.runtime.sendMessage(
         { action: 'PURGE_BROKEN_BOOKMARKS' },
         (response) => {
@@ -192,194 +192,276 @@ function App() {
     }
   };
 
+  // src/App.tsx -> Update your return statement to this:
+
+  // src/App.tsx -> Update your return statement to this:
+
   return (
-    <div style={{ padding: '16px', width: '300px', fontFamily: 'sans-serif' }}>
-      <h3>Bookmark Tools</h3>
+    <div
+      style={{
+        padding: '16px',
+        width: '775px',
+        fontFamily: 'sans-serif',
+        display: 'flex',
+        gap: '24px',
+        boxSizing: 'border-box',
+      }}
+    >
+      {/* LEFT COLUMN: All of your existing interactive controls */}
+      <div style={{ width: '300px', flexShrink: 0, textAlign: 'left' }}>
+        {/* EXCLUSION: Heading 3 alignment can be custom set here (e.g., center) */}
+        <h3 style={{ marginTop: 0, textAlign: 'center' }}>
+          Ultimate Bookmark Manager
+        </h3>
 
-      {/* Source Selection Dropdown Control */}
-      <div style={{ marginBottom: '12px' }}>
-        <label
-          htmlFor="folder-select"
-          style={{ display: 'block', marginBottom: '4px', fontSize: '13px' }}
-        >
-          Select Folder (Source):
-        </label>
-        <select
-          id="folder-select"
-          value={selectedFolderId}
-          onChange={(e) => setSelectedFolderId(e.target.value)}
-          disabled={isWorkerRunning}
-          style={{
-            width: '100%',
-            padding: '6px',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-          }}
-        >
-          {folders.map((folder) => (
-            <option key={folder.id} value={folder.id}>
-              {folder.title}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* NEW: Target Selection Dropdown Control */}
-      <div style={{ marginBottom: '12px' }}>
-        <label
-          htmlFor="target-folder-select"
-          style={{ display: 'block', marginBottom: '4px', fontSize: '13px' }}
-        >
-          Consolidation Target Folder:
-        </label>
-        <select
-          id="target-folder-select"
-          value={targetFolderId}
-          onChange={(e) => setTargetFolderId(e.target.value)}
-          disabled={isWorkerRunning}
-          style={{
-            width: '100%',
-            padding: '6px',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-          }}
-        >
-          {folders.map((folder) => (
-            <option key={folder.id} value={folder.id}>
-              {folder.title}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Persistent Float Timeout Input Configuration */}
-      <div style={{ marginBottom: '16px' }}>
-        <label
-          htmlFor="timeout-input"
-          style={{ display: 'block', marginBottom: '4px', fontSize: '13px' }}
-        >
-          Network Timeout (seconds):
-        </label>
-        <input
-          id="timeout-input"
-          type="number"
-          step="0.1"
-          min="0.5"
-          max="30"
-          value={timeoutSeconds}
-          onChange={(e) => handleTimeoutChange(e.target.value)}
-          disabled={isWorkerRunning}
-          style={{ width: '94%', padding: '6px' }}
-        />
-      </div>
-
-      {/* Main Validation Button */}
-      <button
-        onClick={handleValidate}
-        disabled={isWorkerRunning || !selectedFolderId}
-        style={{
-          width: '100%',
-          padding: '8px',
-          backgroundColor: isWorkerRunning ? '#999' : '#007bff',
-          color: 'white',
-          border: 'none',
-          borderRadius: '4px',
-          cursor: isWorkerRunning ? 'not-allowed' : 'pointer',
-        }}
-      >
-        {isWorkerRunning ? 'Worker Active...' : 'Begin Validation'}
-      </button>
-
-      {/* NEW: Consolidate Folders Action Button */}
-      <button
-        onClick={handleConsolidate}
-        disabled={isWorkerRunning || !selectedFolderId || !targetFolderId}
-        style={{
-          width: '100%',
-          padding: '8px',
-          marginTop: '8px',
-          backgroundColor:
-            isWorkerRunning || selectedFolderId === targetFolderId
-              ? '#ccc'
-              : '#28a745',
-          color: 'white',
-          border: 'none',
-          borderRadius: '4px',
-          cursor:
-            isWorkerRunning || selectedFolderId === targetFolderId
-              ? 'not-allowed'
-              : 'pointer',
-        }}
-      >
-        Consolidate Folders
-      </button>
-
-      {/* Purge Review Folder Action Button */}
-      <button
-        onClick={handlePurgeBroken}
-        disabled={isWorkerRunning}
-        style={{
-          width: '100%',
-          padding: '8px',
-          marginTop: '8px',
-          backgroundColor: isWorkerRunning ? '#ccc' : '#dc3545',
-          color: 'white',
-          border: 'none',
-          borderRadius: '4px',
-          cursor: isWorkerRunning ? 'not-allowed' : 'pointer',
-        }}
-      >
-        Empty Review Folder
-      </button>
-
-      {/* NEW: Recursive Empty Folder Purge Action Button */}
-      <button
-        onClick={handleCleanEmptyFolders}
-        disabled={isWorkerRunning}
-        style={{
-          width: '100%',
-          padding: '8px',
-          marginTop: '8px',
-          backgroundColor: isWorkerRunning ? '#ccc' : '#6c757d', // Slate grey styling
-          color: 'white',
-          border: 'none',
-          borderRadius: '4px',
-          cursor: isWorkerRunning ? 'not-allowed' : 'pointer',
-        }}
-      >
-        Clean Empty Folders
-      </button>
-
-      {statusMessage && (
-        <div
-          style={{
-            marginTop: '14px',
-            padding: '8px',
-            background: '#f4f4f5',
-            borderRadius: '4px',
-            border: '1px solid #e4e4e7',
-          }}
-        >
-          <small
+        {/* Source Selection Dropdown Control */}
+        <div style={{ marginBottom: '12px' }}>
+          <label
+            htmlFor="folder-select"
+            style={{ display: 'block', marginBottom: '4px', fontSize: '13px' }}
+          >
+            Source Folder (for validation or consolidation):
+          </label>
+          <select
+            id="folder-select"
+            value={selectedFolderId}
+            onChange={(e) => setSelectedFolderId(e.target.value)}
+            disabled={isWorkerRunning}
             style={{
-              display: 'block',
-              color: '#71717a',
-              textTransform: 'uppercase',
-              fontSize: '10px',
-              fontWeight: 'bold',
+              width: '100%',
+              padding: '6px',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
             }}
           >
-            System Status
-          </small>
-          <p
-            style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#27272a' }}
-          >
-            {statusMessage}
-          </p>
+            {folders.map((folder) => (
+              <option key={folder.id} value={folder.id}>
+                {folder.title}
+              </option>
+            ))}
+          </select>
         </div>
-      )}
+
+        {/* Target Selection Dropdown Control */}
+        <div style={{ marginBottom: '12px' }}>
+          <label
+            htmlFor="target-folder-select"
+            style={{ display: 'block', marginBottom: '4px', fontSize: '13px' }}
+          >
+            Target Folder (for consolidation):
+          </label>
+          <select
+            id="target-folder-select"
+            value={targetFolderId}
+            onChange={(e) => setTargetFolderId(e.target.value)}
+            disabled={isWorkerRunning}
+            style={{
+              width: '100%',
+              padding: '6px',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+            }}
+          >
+            {folders.map((folder) => (
+              <option key={folder.id} value={folder.id}>
+                {folder.title}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Persistent Float Timeout Input Configuration */}
+        <div style={{ marginBottom: '16px' }}>
+          <label
+            htmlFor="timeout-input"
+            style={{ display: 'block', marginBottom: '4px', fontSize: '13px' }}
+          >
+            Validation Network Timeout (in seconds):
+          </label>
+          <input
+            id="timeout-input"
+            type="number"
+            step="0.1"
+            min="0.5"
+            max="30"
+            value={timeoutSeconds}
+            onChange={(e) => handleTimeoutChange(e.target.value)}
+            disabled={isWorkerRunning}
+            style={{ width: '94%', padding: '6px' }}
+          />
+        </div>
+
+        {/* Main Validation Button */}
+        <button
+          onClick={handleValidate}
+          disabled={isWorkerRunning || !selectedFolderId}
+          style={{
+            width: '100%',
+            padding: '8px',
+            backgroundColor: isWorkerRunning ? '#999' : '#007bff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: isWorkerRunning ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {isWorkerRunning ? 'Working...' : 'Validate Source Folder'}
+        </button>
+
+        {/* Consolidate Folders Action Button */}
+        <button
+          onClick={handleConsolidate}
+          disabled={isWorkerRunning || !selectedFolderId || !targetFolderId}
+          style={{
+            width: '100%',
+            padding: '8px',
+            marginTop: '8px',
+            backgroundColor:
+              isWorkerRunning || selectedFolderId === targetFolderId
+                ? '#ccc'
+                : '#28a745',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor:
+              isWorkerRunning || selectedFolderId === targetFolderId
+                ? 'not-allowed'
+                : 'pointer',
+          }}
+        >
+          Consolidate Source to Target
+        </button>
+
+        {/* Purge Quarantine Folder Action Button */}
+        <button
+          onClick={handlePurgeBroken}
+          disabled={isWorkerRunning}
+          style={{
+            width: '100%',
+            padding: '8px',
+            marginTop: '8px',
+            backgroundColor: isWorkerRunning ? '#ccc' : '#dc3545',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: isWorkerRunning ? 'not-allowed' : 'pointer',
+          }}
+        >
+          Empty Quarantine Folder
+        </button>
+
+        {/* Recursive Empty Folder Purge Action Button */}
+        <button
+          onClick={handleCleanEmptyFolders}
+          disabled={isWorkerRunning}
+          style={{
+            width: '100%',
+            padding: '8px',
+            marginTop: '8px',
+            backgroundColor: isWorkerRunning ? '#ccc' : '#6c757d',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: isWorkerRunning ? 'not-allowed' : 'pointer',
+          }}
+        >
+          Clean Empty Folders
+        </button>
+
+        {statusMessage && (
+          <div
+            style={{
+              marginTop: '14px',
+              padding: '8px',
+              background: '#f4f4f5',
+              borderRadius: '4px',
+              border: '1px solid #e4e4e7',
+              textAlign: 'center', // Explicitly sets the system status card message block to center-justified
+            }}
+          >
+            <small
+              style={{
+                display: 'block',
+                color: '#71717a',
+                textTransform: 'uppercase',
+                fontSize: '10px',
+                fontWeight: 'bold',
+              }}
+            >
+              System Status
+            </small>
+            <p
+              style={{
+                margin: '4px 0 0 0',
+                fontSize: '13px',
+                color: '#27272a',
+              }}
+            >
+              {statusMessage}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* RIGHT COLUMN: User Guidelines Descriptive Text Container */}
+      <div
+        style={{
+          flexGrow: 1,
+          borderLeft: '1px solid #e4e4e7',
+          paddingLeft: '20px',
+          fontSize: '13px',
+          color: '#3f3f46',
+          lineHeight: '1.5',
+          textAlign: 'justify', // Forces all regular description paragraph rows to be full block-justified
+        }}
+      >
+        {/* EXCLUSION: Heading 4 alignment can be custom set here (e.g., center) */}
+        <h4 style={{ marginTop: 0, color: '#18181b', textAlign: 'center' }}>
+          User Guide & Quick Tips
+        </h4>
+
+        <p>
+          <strong>Validate Source Folder:</strong> Scans the selected source
+          folder for dead links. Broken items are safely put into a{' '}
+          <em>"Broken Bookmarks Quarantine"</em> staging folder rather than
+          being deleted instantly. <strong>NOTE: </strong> You should review the
+          bookmarks placed in quarantine to see if any were wrongly flagged. You
+          can skiplist these pages (or domains) to prevent them from being
+          flagged in the future. Will automatically download a
+          "bookmark-validator-report.txt" file containing the validation
+          results.
+        </p>
+
+        <p>
+          <strong>Consolidate Source to Target:</strong> Moves all bookmarks
+          from your Source folder to the selected Target folder. Not available
+          if Source and Target folders are the same.
+        </p>
+
+        <p>
+          <strong>Empty Quarantine Folder:</strong> Permanently deletes all
+          bookmarks contained within the "Broken Bookmarks Quarantine" folder.
+          Use with caution, as this action cannot be undone.
+        </p>
+
+        <p>
+          <strong>Clean Empty Folders:</strong> Recursively scans your entire
+          browser tree to identify and cleanly delete nested folders containing
+          0 bookmarks or folders.
+        </p>
+
+        <p>
+          <strong>Skiplisting:</strong> If a known-working bookmark keeps
+          getting flagged as broken, open the bookmark and right-click inside
+          the page and in the "Ultimate Bookmark Manager" context menu, choose
+          "Skip this domain" to prevent any bookmarks at that site from being
+          flagged, or choose "Skip this URL" to only protect that specific page.
+          You should also move the skiplisted bookmark out of the quarantine
+          folder to avoid accidental deletion.
+        </p>
+      </div>
     </div>
   );
 }
