@@ -122,6 +122,30 @@ function App() {
     });
   };
 
+  const handlePurgeBroken = () => {
+    const confirmed = window.confirm(
+      'Are you sure you want to permanently delete ALL bookmarks inside the "Broken Bookmarks Review" folder?'
+    );
+
+    if (!confirmed) return;
+
+    if (typeof chrome !== 'undefined' && chrome.runtime) {
+      setStatusMessage('Purging broken bookmarks folder...');
+      chrome.runtime.sendMessage(
+        { action: 'PURGE_BROKEN_BOOKMARKS' },
+        (response) => {
+          if (response && response.success) {
+            setStatusMessage(`Success: ${response.message}`);
+          } else {
+            setStatusMessage(
+              `Notice: ${response?.message || 'No action taken.'}`
+            );
+          }
+        }
+      );
+    }
+  };
+
   return (
     <div style={{ padding: '16px', width: '300px', fontFamily: 'sans-serif' }}>
       <h3>Bookmark Validator</h3>
@@ -190,6 +214,24 @@ function App() {
         }}
       >
         {isWorkerRunning ? 'Worker Active...' : 'Begin Validation'}
+      </button>
+
+      {/* NEW: Purge Review Folder Action Button Control */}
+      <button
+        onClick={handlePurgeBroken}
+        disabled={isWorkerRunning}
+        style={{
+          width: '100%',
+          padding: '8px',
+          marginTop: '8px',
+          backgroundColor: isWorkerRunning ? '#ccc' : '#dc3545',
+          color: 'white',
+          border: 'none',
+          borderRadius: '4px',
+          cursor: isWorkerRunning ? 'not-allowed' : 'pointer',
+        }}
+      >
+        Empty Review Folder
       </button>
 
       {statusMessage && (

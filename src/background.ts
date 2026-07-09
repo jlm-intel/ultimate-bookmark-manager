@@ -22,6 +22,63 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       message: currentStatusMessage,
     });
   }
+
+  // src/background.ts -> Inside chrome.runtime.onMessage.addListener
+
+  if (message.action === 'PURGE_BROKEN_BOOKMARKS') {
+    (async () => {
+      try {
+        const FOLDER_NAME = 'Broken Bookmarks Review';
+        const existingFolders = await chrome.bookmarks.search({
+          title: FOLDER_NAME,
+        });
+
+        if (existingFolders.length === 0) {
+          sendResponse({
+            success: false,
+            message: 'Review folder does not exist.',
+          });
+          return;
+        }
+
+        const reviewFolderId = existingFolders[0].id;
+        const subTree = await chrome.bookmarks.getSubTree(reviewFolderId);
+        const children = subTree[0].children || [];
+
+        if (children.length === 0) {
+          sendResponse({ success: true, message: 'Folder is already empty.' });
+          return;
+        }
+
+        // Loop backward through children to delete individual items safely
+        for (let i = children.length - 1; i >= 0; i--) {
+          const child = children[i];
+          if (child.url) {
+            await chrome.bookmarks.remove(child.id);
+          } else {
+            // Safe fallback logic if there happen to be nested subfolders inside it
+            await chrome.bookmarks.removeTree(child.id);
+          }
+        }
+
+        console.log(
+          `[PURGE] Successfully deleted ${children.length} bookmarks from the review folder.`
+        );
+        sendResponse({
+          success: true,
+          message: `Deleted ${children.length} bookmarks.`,
+        });
+      } catch (err: any) {
+        console.error('[PURGE ERROR]', err);
+        sendResponse({
+          success: false,
+          message: err.message || 'Purge failed.',
+        });
+      }
+    })();
+    return true; // Keeps the messaging channel open for asynchronous sendResponse
+  }
+
   return true;
 });
 
