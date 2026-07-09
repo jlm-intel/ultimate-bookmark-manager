@@ -171,6 +171,27 @@ function App() {
     }
   };
 
+  const handleCleanEmptyFolders = () => {
+    const confirmed = window.confirm(
+      'Are you sure you want to recursively search for and permanently delete all empty bookmark folders?'
+    );
+    if (!confirmed) return;
+
+    if (typeof chrome !== 'undefined' && chrome.runtime) {
+      setStatusMessage('Sweeping tree for empty folders...');
+      chrome.runtime.sendMessage(
+        { action: 'CLEAN_EMPTY_FOLDERS' },
+        (response) => {
+          if (response && response.success) {
+            setStatusMessage(`Success: ${response.message}`);
+          } else {
+            setStatusMessage(`Error: ${response?.message || 'Sweep failed.'}`);
+          }
+        }
+      );
+    }
+  };
+
   return (
     <div style={{ padding: '16px', width: '300px', fontFamily: 'sans-serif' }}>
       <h3>Bookmark Tools</h3>
@@ -311,6 +332,24 @@ function App() {
         }}
       >
         Empty Review Folder
+      </button>
+
+      {/* NEW: Recursive Empty Folder Purge Action Button */}
+      <button
+        onClick={handleCleanEmptyFolders}
+        disabled={isWorkerRunning}
+        style={{
+          width: '100%',
+          padding: '8px',
+          marginTop: '8px',
+          backgroundColor: isWorkerRunning ? '#ccc' : '#6c757d', // Slate grey styling
+          color: 'white',
+          border: 'none',
+          borderRadius: '4px',
+          cursor: isWorkerRunning ? 'not-allowed' : 'pointer',
+        }}
+      >
+        Clean Empty Folders
       </button>
 
       {statusMessage && (

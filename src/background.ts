@@ -124,6 +124,77 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true; // Keep message channel bridge alive for async response mapping
   }
 
+  if (message.action === 'CLEAN_EMPTY_FOLDERS') {
+    (async () => {
+      try {
+        const tree = await chrome.bookmarks.getTree();
+        let deletedCount = 0;
+
+        // Bottom-up post-order traversal function
+        async function traverseAndPurge(
+          node: chrome.bookmarks.BookmarkTreeNode
+        ): Promise<boolean> {
+          // If it's a bookmark (has a URL), it contains a valid item
+          if (node.url) return true;
+
+          // If it's a folder, inspect its children first
+          if (node.children) {
+            let hasValidContents = false;
+
+            // Process children sequentially
+            for (const child of node.children) {
+              const childHasContents = await traverseAndPurge(child);
+              if (childHasContents) {
+                hasValidContents = true;
+              }
+            }
+
+            // Guard against deleting permanent system roots (Root '0', Bookmarks Bar '1', Other '2', etc.)
+            const isSystemNode =
+              node.id === '0' || node.id === '1' || node.id === '2';
+
+            if (!hasValidContents && !isSystemNode && node.id) {
+              try {
+                await chrome.bookmarks.remove(node.id);
+                deletedCount++;
+                return false; // Node is gone, it contributes nothing to its parent anymore
+              } catch (err) {
+                console.error(
+                  `[CLEAN ERROR] Could not remove folder ${node.id}:`,
+                  err
+                );
+                return true; // Treat as containing contents if deletion fails
+              }
+            }
+
+            return hasValidContents;
+          }
+          return false;
+        }
+
+        // Run the structural sweep across the root nodes
+        for (const root of tree) {
+          await traverseAndPurge(root);
+        }
+
+        console.log(
+          `[CLEAN COMPLETE] Purged ${deletedCount} empty folders recursively.`
+        );
+        sendResponse({
+          success: true,
+          message: `Purged ${deletedCount} empty folders.`,
+        });
+      } catch (err: any) {
+        console.error('[CLEAN FATAL ERROR]', err);
+        sendResponse({
+          success: false,
+          message: err.message || 'Folder clean cycle failed.',
+        });
+      }
+    })();
+    return true; // Keep message bridge open for async processing
+  }
+
   return true;
 });
 
