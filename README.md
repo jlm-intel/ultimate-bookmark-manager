@@ -1,75 +1,82 @@
-# React + TypeScript + Vite
+# Ultimate Bookmark Manager & Validator
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A modern, high-performance Chrome Extension built with **Vite**, **React**, and **TypeScript** (Manifest V3). This tool dynamically traverses nested bookmark folder hierarchies, verifies URL statuses using optimized networking handshakes, respects custom domain/URL whitelists via context menus, and compiles detailed downloadable text reports.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Features
 
-## React Compiler
+- **Hierarchical Breadcrumbs**: Recursive folder-crawler that shows full nested folder paths (`Folder > Subfolder`) inside the UI dropdown.
+- **Smarter Validation Loop**: Optimized network checking that attempts fast `HEAD` requests and seamlessly falls back to `GET` requests to bypass rigid server blocks.
+- **Persistent Configurable Timeouts**: Dynamically adjustable float-point network timeouts saved securely to `chrome.storage.local`.
+- **Context Menu Whitelisting**: Right-click anywhere on a live page or hyperlink to quickly whitelist specific URLs or entire domains from being scanned.
+- **Automatic Report Delivery**: Generates and auto-downloads a timestamped `.txt` summary file upon validation loop completion.
+- **Safe Structural Backups**: Moves broken links into a dedicated, dynamically allocated `Broken Bookmarks Review` folder with a one-click purge utility.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the ESLint configuration
+## Tech Stack
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- **Framework:** React 18
+- **Build Tool:** Vite
+- **Language:** TypeScript
+- **API Framework:** Chrome Extensions API (Manifest V3)
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+---
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## Getting Started
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### 1. Installation & Setup
 
+Clone the repository and install the development dependencies:
+
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 2. Run the Development Build
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Compile the extension and start the asset-watching process:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run build
+```
+
+This generates a compiled, production-ready extension package inside the dist/ directory.
+
+### 3. Load the Extension into Google Chrome
+
+Open Google Chrome and navigate to chrome://extensions/.
+
+Enable Developer mode via the toggle switch in the top-right corner.
+
+Click the Load unpacked button in the top-left corner.
+
+Select the dist folder located inside this project's root directory.
+
+Important Permission Note: Whenever you modify foundational security declarations inside public/manifest.json (such as adding host_permissions or declarativeNetRequest), you must completely Remove the extension from chrome://extensions/ and click Load Unpacked fresh to force Chrome to re-authorize the background Service Worker thread.
+
+## Project Structure
 
 ```
+├── dist/ # Production bundle injected into Chrome
+├── public/
+│ └── manifest.json # Extension configuration, scopes, & permissions
+├── src/
+│ ├── background.ts # Ephemeral MV3 Service Worker & background loop
+│ ├── App.tsx # Popup user interface & React lifecycle hooks
+│ ├── App.css # Scoped UI styles & custom layouts
+│ └── main.tsx # React DOM root mounting point
+├── package.json # Scripts and asset dependencies
+└── tsconfig.json # TypeScript compiler configurations
+```
+
+## How It Works Behind the Scenes
+
+### Bypassing Bot Firewalls
+
+The background service worker utilizes the chrome.declarativeNetRequest API to dynamically inject a authentic desktop User-Agent string into outbound extension network traffic. This dramatically reduces false positives triggered by Cloudflare, Akamai, or strict server firewalls.
+
+### Safe Invalidation Lifecycles
+
+If a bookmark is flagged as broken, it isn't deleted outright. It is appended to a staging array and cleanly moved via chrome.bookmarks.move into a review silo. The Empty Review Folder safety utility uses backwards-loop iteration logic to safely delete nested configurations without breaking target indices.
