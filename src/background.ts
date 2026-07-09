@@ -5,11 +5,10 @@ let currentStatusMessage = 'Idle';
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.action === 'START_VALIDATION') {
-    // Extract folderPath alongside folderId
     const { folderId, folderPath } = message;
 
     if (!isValidationRunning) {
-      runValidation(folderId, folderPath || folderId); // <-- Pass it forward
+      runValidation(folderId, folderPath || folderId);
       sendResponse({ status: 'started' });
     } else {
       sendResponse({ status: 'already_running' });
@@ -22,8 +21,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       message: currentStatusMessage,
     });
   }
-
-  // src/background.ts -> Inside chrome.runtime.onMessage.addListener
 
   if (message.action === 'PURGE_BROKEN_BOOKMARKS') {
     (async () => {
@@ -50,13 +47,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           return;
         }
 
-        // Loop backward through children to delete individual items safely
         for (let i = children.length - 1; i >= 0; i--) {
           const child = children[i];
           if (child.url) {
             await chrome.bookmarks.remove(child.id);
           } else {
-            // Safe fallback logic if there happen to be nested subfolders inside it
             await chrome.bookmarks.removeTree(child.id);
           }
         }
@@ -76,7 +71,57 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         });
       }
     })();
-    return true; // Keeps the messaging channel open for asynchronous sendResponse
+    return true;
+  }
+
+  // NEW: Folder Consolidation Engine
+  if (message.action === 'CONSOLIDATE_FOLDERS') {
+    (async () => {
+      try {
+        const { sourceId, targetId } = message;
+
+        // Fetch static array child map list of source targets
+        const subTree = await chrome.bookmarks.getSubTree(sourceId);
+        const children = subTree[0].children || [];
+
+        if (children.length === 0) {
+          sendResponse({
+            success: true,
+            message: 'Source folder has no assets to move.',
+          });
+          return;
+        }
+
+        let movedCount = 0;
+        // Map elements explicitly across via ID positions (index offsets safety guaranteed)
+        for (const child of children) {
+          try {
+            await chrome.bookmarks.move(child.id, { parentId: targetId });
+            movedCount++;
+          } catch (moveErr) {
+            console.error(
+              `[CONSOLIDATE ERROR] Failed to transfer element node: ${child.id}`,
+              moveErr
+            );
+          }
+        }
+
+        console.log(
+          `[CONSOLIDATE] Shifted ${movedCount} elements out of node ${sourceId} into destination target ${targetId}.`
+        );
+        sendResponse({
+          success: true,
+          message: `Moved ${movedCount} bookmarks successfully.`,
+        });
+      } catch (err: any) {
+        console.error('[CONSOLIDATE FATAL ERROR]', err);
+        sendResponse({
+          success: false,
+          message: err.message || 'Consolidation loop failed.',
+        });
+      }
+    })();
+    return true; // Keep message channel bridge alive for async response mapping
   }
 
   return true;
@@ -105,8 +150,6 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
   if (info.menuItemId === 'whitelist-domain') {
     try {
       const domain = new URL(urlString).hostname;
-
-      // Add explicit type casting here:
       const result = (await chrome.storage.local.get({
         whitelistedDomains: [],
       })) as { whitelistedDomains: string[] };
@@ -122,7 +165,6 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
     }
   } else if (info.menuItemId === 'whitelist-url') {
     try {
-      // Add explicit type casting here:
       const result = (await chrome.storage.local.get({
         whitelistedUrls: [],
       })) as { whitelistedUrls: string[] };
@@ -198,7 +240,6 @@ async function runValidation(folderId: string, folderPath: string) {
     let whitelistedUrls: string[] = [];
 
     try {
-      // Add explicit comprehensive type casting here:
       const storage = (await chrome.storage.local.get({
         timeoutSeconds: 5.0,
         whitelistedDomains: [],
@@ -245,13 +286,10 @@ async function runValidation(folderId: string, folderPath: string) {
       let isWhitelisted = false;
       let whitelistReason = '';
 
-      // 1. Exact URL match check
       if (whitelistedUrls.includes(link.url)) {
         isWhitelisted = true;
         whitelistReason = 'Exact URL is whitelisted';
-      }
-      // 2. Domain match check
-      else {
+      } else {
         try {
           const currentDomain = new URL(link.url).hostname;
           if (whitelistedDomains.includes(currentDomain)) {
@@ -267,7 +305,7 @@ async function runValidation(folderId: string, folderPath: string) {
         logAndTrack(
           `[SKIPPED] Item ${currentItemNumber}/${total} | Reason: ${whitelistReason} | URL: ${link.url}`
         );
-        continue; // Bypasses network request entirely, keeping bookmark where it is
+        continue;
       }
 
       // --- PROCEED WITH NORMAL SCAN IF NOT WHITELISTED ---
@@ -388,10 +426,7 @@ async function moveFailedBookmarks(
   if (existingFolders.length > 0) {
     reviewFolderId = existingFolders[0].id;
   } else {
-    // 1. Fetch the absolute top level root structure dynamically
     const rootNodes = await chrome.bookmarks.getTree();
-
-    // 2. Safely grab the first available root branch (usually 'Root' or 'Bookmarks Bar')
     const primaryRootNode = rootNodes[0]?.children?.[0] || rootNodes[0];
     const safeParentId = primaryRootNode.id;
 
@@ -401,7 +436,7 @@ async function moveFailedBookmarks(
 
     const newFolder = await chrome.bookmarks.create({
       title: FOLDER_NAME,
-      parentId: safeParentId, // Dynamic assignment replaces hardcoded '2'
+      parentId: safeParentId,
     });
     reviewFolderId = newFolder.id;
   }
