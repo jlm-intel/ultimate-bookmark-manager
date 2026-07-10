@@ -80,21 +80,24 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       try {
         const { sourceId, targetId } = message;
 
-        // Fetch static array child map list of source targets
+        // Fetch the tree slice for the source folder
         const subTree = await chrome.bookmarks.getSubTree(sourceId);
-        const children = subTree[0].children || [];
 
-        if (children.length === 0) {
+        // --- CRITICAL FIX: Filter out subfolders, targeting ONLY direct root bookmarks ---
+        const bookmarkChildren =
+          subTree[0].children?.filter((node) => node.url) || [];
+
+        if (bookmarkChildren.length === 0) {
           sendResponse({
             success: true,
-            message: 'Source folder has no assets to move.',
+            message: 'Source folder has no root-level bookmarks to move.',
           });
           return;
         }
 
         let movedCount = 0;
-        // Map elements explicitly across via ID positions (index offsets safety guaranteed)
-        for (const child of children) {
+        // Iterate exclusively through the bookmark nodes
+        for (const child of bookmarkChildren) {
           try {
             await chrome.bookmarks.move(child.id, { parentId: targetId });
             movedCount++;
@@ -107,11 +110,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         }
 
         console.log(
-          `[CONSOLIDATE] Shifted ${movedCount} elements out of node ${sourceId} into destination target ${targetId}.`
+          `[CONSOLIDATE] Shifted ${movedCount} direct bookmarks out of node ${sourceId} into destination target ${targetId}.`
         );
         sendResponse({
           success: true,
-          message: `Moved ${movedCount} bookmarks successfully.`,
+          message: `Moved ${movedCount} bookmarks successfully (nested folders were left intact).`,
         });
       } catch (err: any) {
         console.error('[CONSOLIDATE FATAL ERROR]', err);
@@ -498,7 +501,12 @@ async function moveFailedBookmarks(
     reviewFolderId = existingFolders[0].id;
   } else {
     const rootNodes = await chrome.bookmarks.getTree();
-    const primaryRootNode = rootNodes[0]?.children?.[0] || rootNodes[0];
+
+    // --- UPDATED: Targets index 1 (Other Bookmarks) with index 0 (Bookmarks Bar) as safety fallback ---
+    const primaryRootNode =
+      rootNodes[0]?.children?.[1] ||
+      rootNodes[0]?.children?.[0] ||
+      rootNodes[0];
     const safeParentId = primaryRootNode.id;
 
     console.log(
