@@ -205,6 +205,8 @@ function App() {
         display: 'flex',
         gap: '24px',
         boxSizing: 'border-box',
+        backgroundColor: '#ecf7bd',
+        border: '2px solid #7d8364',
       }}
     >
       {/* LEFT COLUMN: All of your existing interactive controls */}
@@ -300,7 +302,7 @@ function App() {
           style={{
             width: '100%',
             padding: '8px',
-            backgroundColor: isWorkerRunning ? '#999' : '#007bff',
+            backgroundColor: isWorkerRunning ? '#f0f0f0' : '#5590f1',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
@@ -320,8 +322,8 @@ function App() {
             marginTop: '8px',
             backgroundColor:
               isWorkerRunning || selectedFolderId === targetFolderId
-                ? '#ccc'
-                : '#28a745',
+                ? '#f0f0f0'
+                : '#5590f1',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
@@ -342,7 +344,7 @@ function App() {
             width: '100%',
             padding: '8px',
             marginTop: '8px',
-            backgroundColor: isWorkerRunning ? '#ccc' : '#dc3545',
+            backgroundColor: isWorkerRunning ? '#f0f0f0' : '#5590f1',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
@@ -360,7 +362,7 @@ function App() {
             width: '100%',
             padding: '8px',
             marginTop: '8px',
-            backgroundColor: isWorkerRunning ? '#ccc' : '#6c757d',
+            backgroundColor: isWorkerRunning ? '#f0f0f0' : '#5590f1',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
@@ -390,7 +392,7 @@ function App() {
                 fontWeight: 'bold',
               }}
             >
-              System Status
+              Extension Status
             </small>
             <p
               style={{
