@@ -389,6 +389,7 @@ async function runValidation(folderId: string, folderPath: string) {
 
       let isBroken = false;
       let invalidationReason = '';
+      let response: Response | null = null; // 1. Scope the live response object to the entire iteration step
 
       try {
         const controller = new AbortController();
@@ -397,7 +398,8 @@ async function runValidation(folderId: string, folderPath: string) {
           timeoutDurationMs
         );
 
-        let response = await fetch(link.url, {
+        // 2. Remove "let" so it updates our wider scoped variable
+        response = await fetch(link.url, {
           method: 'HEAD',
           signal: controller.signal,
         });
@@ -415,6 +417,7 @@ async function runValidation(folderId: string, folderPath: string) {
             timeoutDurationMs
           );
 
+          // Remove "let" here as well so the fallback updates the same reference
           response = await fetch(link.url, {
             method: 'GET',
             signal: getController.signal,
@@ -434,14 +437,17 @@ async function runValidation(folderId: string, folderPath: string) {
             : `Network/DNS Error (${error.message})`;
       }
 
+      // 3. Your log code can now cleanly read the live object safely!
+      const finalHttpCode = response ? response.status : 0;
+
       if (isBroken) {
         logAndTrack(
-          `[INVALID] Reason: ${invalidationReason} | URL: ${link.url}`,
+          `[INVALID] HTTP Code ${finalHttpCode} | Reason: ${invalidationReason} | URL: ${link.url}`,
           true
         );
         failedBookmarks.push(link);
       } else {
-        logAndTrack(`[VALID] Passed: ${link.url}`);
+        logAndTrack(`[VALID] HTTP Code ${finalHttpCode} | URL: ${link.url}`);
       }
     }
 
