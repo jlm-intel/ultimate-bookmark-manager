@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+const IDLE_STRING = 'Idle';
 
 interface BookmarkFolder {
   id: string;
@@ -13,6 +14,7 @@ function App() {
   const [statusMessage, setStatusMessage] = useState<string>(
     'Checking worker status...'
   );
+  const [completionMessage, setCompletionMessage] = useState<string>('');
 
   const [timeoutSeconds, setTimeoutSeconds] = useState<string>('5.0');
 
@@ -22,6 +24,9 @@ function App() {
         if (response) {
           setIsWorkerRunning(response.isRunning);
           setStatusMessage(response.message);
+          if (response.completion) {
+            setCompletionMessage(response.completion);
+          }
         }
       });
     }
@@ -116,14 +121,15 @@ function App() {
         { action: 'PURGE_BROKEN_BOOKMARKS' },
         (response) => {
           if (response && response.success) {
-            setStatusMessage(`Success: ${response.message}`);
+            setCompletionMessage(`Success: ${response.completion}`);
           } else {
-            setStatusMessage(
-              `Notice: ${response?.message || 'No action taken.'}`
+            setCompletionMessage(
+              `Error: ${response?.completion || 'No action taken.'}`
             );
           }
         }
       );
+      setStatusMessage(IDLE_STRING);
     }
   };
 
@@ -160,14 +166,15 @@ function App() {
         },
         (response) => {
           if (response && response.success) {
-            setStatusMessage(`Success: ${response.message}`);
+            setCompletionMessage(`Success: ${response.completion}`);
           } else {
-            setStatusMessage(
-              `Error: ${response?.message || 'Consolidation failed.'}`
+            setCompletionMessage(
+              `Error: ${response?.completion || 'Consolidation failed.'}`
             );
           }
         }
       );
+      setStatusMessage(IDLE_STRING);
     }
   };
 
@@ -183,18 +190,17 @@ function App() {
         { action: 'CLEAN_EMPTY_FOLDERS' },
         (response) => {
           if (response && response.success) {
-            setStatusMessage(`Success: ${response.message}`);
+            setCompletionMessage(`Success: ${response.completion}`);
           } else {
-            setStatusMessage(`Error: ${response?.message || 'Sweep failed.'}`);
+            setCompletionMessage(
+              `Error: ${response?.completion || 'Sweep failed.'}`
+            );
           }
         }
       );
+      setStatusMessage(IDLE_STRING);
     }
   };
-
-  // src/App.tsx -> Update your return statement to this:
-
-  // src/App.tsx -> Update your return statement to this:
 
   return (
     <div
@@ -402,6 +408,15 @@ function App() {
               }}
             >
               {statusMessage}
+            </p>
+            <p
+              style={{
+                margin: '4px 0 0 0',
+                fontSize: '13px',
+                color: '#27272a',
+              }}
+            >
+              {completionMessage}
             </p>
           </div>
         )}

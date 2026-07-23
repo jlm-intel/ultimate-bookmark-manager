@@ -87,7 +87,7 @@ If a bookmark is flagged as broken, it isn't deleted outright. It is appended to
 
 Many websites employ techniques to combat botting and DDoS attacks, and sadly some of these measures make it extremely difficult for well-meaning Chrome extensions
 like this one to to their jobs. This is why the exension never deletes "broken" links directly, but moves them into the Broken Bookmarks Quarantine folder for you
-to review. It is because of the potential for false positives that this extension provides a skiplist feature, allowing you to mark domains or specific URLs to skip when performing link validation. The drawback to this approach is that you might have URLs for those sites which actually are invalid/broken; but it's all we've got for now. While Chrome offers several ways to view and manipulate bookmarks, I've found the chrome://bookmarks page to be the fastest/most-responsive one for performing manual reviews of the Quarantine folder. (Examples of sites that can result in false positives: 4chan.org, newgrounds.com)
+to review. It is because of the potential for false positives that this extension provides a skiplist feature, allowing you to mark domains or specific URLs to skip when performing link validation. The drawback to this approach is that you might have URLs for those sites which actually are invalid/broken; but it's all we've got for now. While Chrome offers several ways to view and manipulate bookmarks, I've found the chrome://bookmarks page to be the fastest/most-responsive one for performing manual reviews of the Quarantine folder. (Examples of sites that can result in false positives: 4chan.org, newgrounds.com, sourceforge.net)
 
 ### False negatives (URLs NOT detected as broken when the content linked to is no longer present)
 

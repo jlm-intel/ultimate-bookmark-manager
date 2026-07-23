@@ -1,7 +1,9 @@
 // src/background.ts
-
+const IDLE_STRING = 'Idle';
+const QUARANTINE_FOLDER_NAME = 'Broken Bookmarks Quarantine';
 let isValidationRunning = false;
-let currentStatusMessage = 'Idle';
+let currentStatusMessage = IDLE_STRING;
+let currentCompletionMessage = '';
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.action === 'START_VALIDATION') {
@@ -9,41 +11,55 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
     if (!isValidationRunning) {
       runValidation(folderId, folderPath || folderId);
-      sendResponse({ status: 'started' });
+      sendResponse({ status: 'started' }); // not currently handled in the UI
     } else {
-      sendResponse({ status: 'already_running' });
+      sendResponse({ status: 'already_running' }); // not currently handled in the UI
     }
   }
 
   if (message.action === 'GET_STATUS') {
+    // popup sends this message every second as long as the popup is visible. idle state is currently only
+    // managed for link validation, while other operations happen quickly enough that we don't lock the
+    // UI for them at this time. 'message' is just the state of the validation process, while 'completion'
+    // is a one-time message that is sent when the validation process finishes, so that the UI can display
+    // a final message to the user.
     sendResponse({
       isRunning: isValidationRunning,
       message: currentStatusMessage,
+      completion: currentCompletionMessage,
     });
+    // completion messages are only sent once, to keep from overwriting the UI with stale data.
+    if (currentCompletionMessage.length > 0) {
+      currentCompletionMessage = '';
+    }
   }
 
   if (message.action === 'PURGE_BROKEN_BOOKMARKS') {
     (async () => {
       try {
-        const FOLDER_NAME = 'Broken Bookmarks Quarantine';
+        // only purge the quarantine folder, if it exists. If it doesn't exist, return a message to the user.
         const existingFolders = await chrome.bookmarks.search({
-          title: FOLDER_NAME,
+          title: QUARANTINE_FOLDER_NAME,
         });
 
         if (existingFolders.length === 0) {
           sendResponse({
             success: false,
-            message: 'Quarantine folder does not exist.',
+            completion: 'Quarantine folder does not exist.',
           });
           return;
         }
 
+        // this operation performs a bottom-up deletion of all bookmarks and subfolders in the quarantine folder, leaving the folder itself intact.
         const reviewFolderId = existingFolders[0].id;
         const subTree = await chrome.bookmarks.getSubTree(reviewFolderId);
         const children = subTree[0].children || [];
 
         if (children.length === 0) {
-          sendResponse({ success: true, message: 'Folder is already empty.' });
+          sendResponse({
+            success: true,
+            completion: 'Folder is already empty.',
+          });
           return;
         }
 
@@ -61,13 +77,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         );
         sendResponse({
           success: true,
-          message: `Deleted ${children.length} bookmarks.`,
+          completion: `Deleted ${children.length} bookmarks.`,
         });
       } catch (err: any) {
         console.error('[PURGE ERROR]', err);
         sendResponse({
           success: false,
-          message: err.message || 'Purge failed.',
+          completion: err.message || 'Purge failed.',
         });
       }
     })();
@@ -83,19 +99,20 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         // Fetch the tree slice for the source folder
         const subTree = await chrome.bookmarks.getSubTree(sourceId);
 
-        // --- CRITICAL FIX: Filter out subfolders, targeting ONLY direct root bookmarks ---
+        // This operation only moves root-level bookmarks, not subfolders or nested bookmarks. This is intentional.
         const bookmarkChildren =
           subTree[0].children?.filter((node) => node.url) || [];
 
         if (bookmarkChildren.length === 0) {
           sendResponse({
             success: true,
-            message: 'Source folder has no root-level bookmarks to move.',
+            completion: 'Source folder has no root-level bookmarks to move.',
           });
           return;
         }
 
         let movedCount = 0;
+        let movedErrors = 0;
         // Iterate exclusively through the bookmark nodes
         for (const child of bookmarkChildren) {
           try {
@@ -106,6 +123,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
               `[CONSOLIDATE ERROR] Failed to transfer element node: ${child.id}`,
               moveErr
             );
+            movedErrors++;
           }
         }
 
@@ -114,13 +132,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         );
         sendResponse({
           success: true,
-          message: `Moved ${movedCount} bookmarks successfully (nested folders were left intact).`,
+          completion: `Moved ${movedCount} bookmarks successfully with ${movedErrors} errors.`,
         });
       } catch (err: any) {
         console.error('[CONSOLIDATE FATAL ERROR]', err);
         sendResponse({
           success: false,
-          message: err.message || 'Consolidation loop failed.',
+          completion: err.message || 'Consolidation loop failed.',
         });
       }
     })();
@@ -185,13 +203,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         );
         sendResponse({
           success: true,
-          message: `Purged ${deletedCount} empty folders.`,
+          completion: `Purged ${deletedCount} empty folders.`,
         });
       } catch (err: any) {
         console.error('[CLEAN FATAL ERROR]', err);
         sendResponse({
           success: false,
-          message: err.message || 'Folder clean cycle failed.',
+          completion: err.message || 'Folder clean cycle failed.',
         });
       }
     })();
@@ -454,10 +472,11 @@ async function runValidation(folderId: string, folderPath: string) {
     if (failedBookmarks.length > 0) {
       currentStatusMessage = `Moving ${failedBookmarks.length} broken links...`;
       await moveFailedBookmarks(failedBookmarks);
-      currentStatusMessage = `Completed! Moved ${failedBookmarks.length} broken links.`;
+      currentCompletionMessage = `Completed! Moved ${failedBookmarks.length} broken links.`;
     } else {
-      currentStatusMessage = 'Validation complete! All links are healthy.';
+      currentCompletionMessage = 'Validation complete! All links are healthy.';
     }
+    currentStatusMessage = IDLE_STRING;
 
     // --- TRIGGER FILE DOWNLOAD ---
     const fullLogText = fileLogLines.join('\n');
@@ -473,7 +492,8 @@ async function runValidation(folderId: string, folderPath: string) {
     }
   } catch (err) {
     console.error('[FATAL ERROR] Exception in validation loop:', err);
-    currentStatusMessage = 'An error occurred during validation.';
+    currentCompletionMessage = 'An error occurred during validation.';
+    currentStatusMessage = IDLE_STRING;
   } finally {
     // --- CLEAN UP DEE RULES ---
     if (typeof chrome !== 'undefined' && chrome.declarativeNetRequest) {
@@ -499,8 +519,9 @@ async function runValidation(folderId: string, folderPath: string) {
 async function moveFailedBookmarks(
   failedNodes: chrome.bookmarks.BookmarkTreeNode[]
 ) {
-  const FOLDER_NAME = 'Broken Bookmarks Quarantine';
-  const existingFolders = await chrome.bookmarks.search({ title: FOLDER_NAME });
+  const existingFolders = await chrome.bookmarks.search({
+    title: QUARANTINE_FOLDER_NAME,
+  });
   let reviewFolderId = '';
 
   if (existingFolders.length > 0) {
@@ -520,7 +541,7 @@ async function moveFailedBookmarks(
     );
 
     const newFolder = await chrome.bookmarks.create({
-      title: FOLDER_NAME,
+      title: QUARANTINE_FOLDER_NAME,
       parentId: safeParentId,
     });
     reviewFolderId = newFolder.id;
