@@ -15,8 +15,9 @@ function App() {
     'Checking worker status...'
   );
   const [completionMessage, setCompletionMessage] = useState<string>('');
-
   const [timeoutSeconds, setTimeoutSeconds] = useState<string>('5.0');
+  const [isDebugLoggingEnabled, setIsDebugLoggingEnabled] =
+    useState<boolean>(false);
 
   const checkWorkerStatus = () => {
     if (typeof chrome !== 'undefined' && chrome.runtime) {
@@ -80,6 +81,20 @@ function App() {
       setTimeoutSeconds('5.0');
     }
 
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      chrome.storage.local.get(
+        { timeoutSeconds: 5.0, isDebugLoggingEnabled: false },
+        (result) => {
+          const storageData = result as {
+            timeoutSeconds: number | string;
+            isDebugLoggingEnabled: boolean;
+          };
+          setTimeoutSeconds(storageData.timeoutSeconds.toString());
+          setIsDebugLoggingEnabled(storageData.isDebugLoggingEnabled ?? false);
+        }
+      );
+    }
+
     checkWorkerStatus();
     const interval = setInterval(checkWorkerStatus, 1000);
     return () => clearInterval(interval);
@@ -92,6 +107,13 @@ function App() {
       if (typeof chrome !== 'undefined' && chrome.storage?.local) {
         chrome.storage.local.set({ timeoutSeconds: parsedFloat });
       }
+    }
+  };
+
+  const handleDebugLoggingChange = (enabled: boolean) => {
+    setIsDebugLoggingEnabled(enabled);
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      chrome.storage.local.set({ isDebugLoggingEnabled: enabled });
     }
   };
 
@@ -223,7 +245,7 @@ function App() {
         </h3>
 
         {/* Source Selection Dropdown Control */}
-        <div style={{ marginBottom: '12px' }}>
+        <div style={{ marginBottom: '8px' }}>
           <label
             htmlFor="folder-select"
             style={{ display: 'block', marginBottom: '4px', fontSize: '13px' }}
@@ -252,7 +274,7 @@ function App() {
         </div>
 
         {/* Target Selection Dropdown Control */}
-        <div style={{ marginBottom: '12px' }}>
+        <div style={{ marginBottom: '8px' }}>
           <label
             htmlFor="target-folder-select"
             style={{ display: 'block', marginBottom: '4px', fontSize: '13px' }}
@@ -280,27 +302,6 @@ function App() {
           </select>
         </div>
 
-        {/* Persistent Float Timeout Input Configuration */}
-        <div style={{ marginBottom: '16px' }}>
-          <label
-            htmlFor="timeout-input"
-            style={{ display: 'block', marginBottom: '4px', fontSize: '13px' }}
-          >
-            Validation Network Timeout (in seconds):
-          </label>
-          <input
-            id="timeout-input"
-            type="number"
-            step="0.1"
-            min="0.5"
-            max="30"
-            value={timeoutSeconds}
-            onChange={(e) => handleTimeoutChange(e.target.value)}
-            disabled={isWorkerRunning}
-            style={{ width: '94%', padding: '6px' }}
-          />
-        </div>
-
         {/* Main Validation Button */}
         <button
           onClick={handleValidate}
@@ -308,7 +309,7 @@ function App() {
           style={{
             width: '100%',
             padding: '8px',
-            backgroundColor: isWorkerRunning ? '#f0f0f0' : '#5590f1',
+            backgroundColor: isWorkerRunning ? '#A0A0A0' : '#5590f1',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
@@ -328,7 +329,7 @@ function App() {
             marginTop: '8px',
             backgroundColor:
               isWorkerRunning || selectedFolderId === targetFolderId
-                ? '#f0f0f0'
+                ? '#A0A0A0'
                 : '#5590f1',
             color: 'white',
             border: 'none',
@@ -350,7 +351,7 @@ function App() {
             width: '100%',
             padding: '8px',
             marginTop: '8px',
-            backgroundColor: isWorkerRunning ? '#f0f0f0' : '#5590f1',
+            backgroundColor: isWorkerRunning ? '#A0A0A0' : '#5590f1',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
@@ -368,7 +369,7 @@ function App() {
             width: '100%',
             padding: '8px',
             marginTop: '8px',
-            backgroundColor: isWorkerRunning ? '#f0f0f0' : '#5590f1',
+            backgroundColor: isWorkerRunning ? '#A0A0A0' : '#5590f1',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
@@ -378,15 +379,16 @@ function App() {
           Clean Empty Folders
         </button>
 
+        {/* System Status Message Card */}
         {statusMessage && (
           <div
             style={{
-              marginTop: '14px',
+              marginTop: '8px',
               padding: '8px',
               background: '#f4f4f5',
               borderRadius: '4px',
               border: '1px solid #e4e4e7',
-              textAlign: 'center', // Explicitly sets the system status card message block to center-justified
+              textAlign: 'center',
             }}
           >
             <small
@@ -420,9 +422,55 @@ function App() {
             </p>
           </div>
         )}
+
+        {/* Persistent Float Timeout Input Configuration */}
+        <div style={{ marginBottom: '8px', marginTop: '8px' }}>
+          <label
+            htmlFor="timeout-input"
+            style={{ display: 'block', marginBottom: '4px', fontSize: '13px' }}
+          >
+            Validation Network Timeout (in seconds):
+          </label>
+          <input
+            id="timeout-input"
+            type="number"
+            step="0.1"
+            min="0.5"
+            max="30"
+            value={timeoutSeconds}
+            onChange={(e) => handleTimeoutChange(e.target.value)}
+            disabled={isWorkerRunning}
+            style={{ width: '94%', padding: '6px' }}
+          />
+        </div>
+
+        {/* Debug Logging Checkbox Toggle */}
+        <div
+          style={{
+            marginBottom: '8px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <input
+            id="debug-logging-toggle"
+            type="checkbox"
+            checked={isDebugLoggingEnabled}
+            onChange={(e) => handleDebugLoggingChange(e.target.checked)}
+            disabled={isWorkerRunning}
+            style={{ cursor: 'pointer' }}
+          />
+          <label
+            htmlFor="debug-logging-toggle"
+            style={{ fontSize: '13px', cursor: 'pointer', userSelect: 'none' }}
+          >
+            Enable Console Debug Logging
+          </label>
+        </div>
       </div>
 
-      {/* RIGHT COLUMN: User Guidelines Descriptive Text Container */}
+      {/* RIGHT COLUMN: User Guide & Quick Tips */}
       <div
         style={{
           flexGrow: 1,
@@ -473,10 +521,10 @@ function App() {
           <strong>Skiplisting:</strong> If a known-working bookmark keeps
           getting flagged as broken, open the bookmark and right-click inside
           the page and in the "Ultimate Bookmark Manager" context menu, choose
-          "Skip this domain" to prevent any bookmarks at that site from being
-          flagged, or choose "Skip this URL" to only protect that specific page.
-          You should also move the skiplisted bookmark out of the quarantine
-          folder to avoid accidental deletion.
+          "Skip this whole site" to prevent any bookmarks at that site from
+          being flagged, or choose "Skip this specific page" to only protect
+          that specific page/bookmark. You should also move the skiplisted
+          bookmark out of the quarantine folder to avoid accidental deletion.
         </p>
       </div>
     </div>

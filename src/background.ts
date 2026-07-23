@@ -5,6 +5,45 @@ let isValidationRunning = false;
 let currentStatusMessage = IDLE_STRING;
 let currentCompletionMessage = '';
 
+async function debugLog(message: string, ...optionalParams: any[]) {
+  try {
+    const { isDebugLoggingEnabled } = await chrome.storage.local.get({
+      isDebugLoggingEnabled: false,
+    });
+    if (isDebugLoggingEnabled) {
+      console.log(message, ...optionalParams);
+    }
+  } catch (e) {
+    // Fail silently if storage is unavailable
+  }
+}
+
+async function debugWarn(message: string, ...optionalParams: any[]) {
+  try {
+    const { isDebugLoggingEnabled } = await chrome.storage.local.get({
+      isDebugLoggingEnabled: false,
+    });
+    if (isDebugLoggingEnabled) {
+      console.warn(message, ...optionalParams);
+    }
+  } catch (e) {
+    // Fail silently if storage is unavailable
+  }
+}
+
+async function debugError(message: string, ...optionalParams: any[]) {
+  try {
+    const { isDebugLoggingEnabled } = await chrome.storage.local.get({
+      isDebugLoggingEnabled: false,
+    });
+    if (isDebugLoggingEnabled) {
+      console.error(message, ...optionalParams);
+    }
+  } catch (e) {
+    // Fail silently if storage is unavailable
+  }
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.action === 'START_VALIDATION') {
     const { folderId, folderPath } = message;
@@ -72,7 +111,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           }
         }
 
-        console.log(
+        debugLog(
           `[PURGE] Successfully deleted ${children.length} bookmarks from the quarantine folder.`
         );
         sendResponse({
@@ -80,7 +119,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           completion: `Deleted ${children.length} bookmarks.`,
         });
       } catch (err: any) {
-        console.error('[PURGE ERROR]', err);
+        debugError('[PURGE ERROR]', err);
         sendResponse({
           success: false,
           completion: err.message || 'Purge failed.',
@@ -119,7 +158,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             await chrome.bookmarks.move(child.id, { parentId: targetId });
             movedCount++;
           } catch (moveErr) {
-            console.error(
+            debugError(
               `[CONSOLIDATE ERROR] Failed to transfer element node: ${child.id}`,
               moveErr
             );
@@ -127,7 +166,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           }
         }
 
-        console.log(
+        debugLog(
           `[CONSOLIDATE] Shifted ${movedCount} direct bookmarks out of node ${sourceId} into destination target ${targetId}.`
         );
         sendResponse({
@@ -135,7 +174,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           completion: `Moved ${movedCount} bookmarks successfully with ${movedErrors} errors.`,
         });
       } catch (err: any) {
-        console.error('[CONSOLIDATE FATAL ERROR]', err);
+        debugError('[CONSOLIDATE FATAL ERROR]', err);
         sendResponse({
           success: false,
           completion: err.message || 'Consolidation loop failed.',
@@ -180,7 +219,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
                 deletedCount++;
                 return false; // Node is gone, it contributes nothing to its parent anymore
               } catch (err) {
-                console.error(
+                debugError(
                   `[CLEAN ERROR] Could not remove folder ${node.id}:`,
                   err
                 );
@@ -198,7 +237,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           await traverseAndPurge(root);
         }
 
-        console.log(
+        debugLog(
           `[CLEAN COMPLETE] Purged ${deletedCount} empty folders recursively.`
         );
         sendResponse({
@@ -206,7 +245,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           completion: `Purged ${deletedCount} empty folders.`,
         });
       } catch (err: any) {
-        console.error('[CLEAN FATAL ERROR]', err);
+        debugError('[CLEAN FATAL ERROR]', err);
         sendResponse({
           success: false,
           completion: err.message || 'Folder clean cycle failed.',
@@ -223,13 +262,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: 'skiplist-domain',
-    title: 'Skip this domain',
+    title: 'Skip this whole site when validating bookmarks',
     contexts: ['page', 'link'],
   });
 
   chrome.contextMenus.create({
     id: 'skiplist-url',
-    title: 'Skip this URL',
+    title: 'Skip this specific page when validating bookmarks',
     contexts: ['page', 'link'],
   });
 });
@@ -250,10 +289,10 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
       if (!currentDomains.includes(domain)) {
         currentDomains.push(domain);
         await chrome.storage.local.set({ skiplistedDomains: currentDomains });
-        console.log(`[WHITELIST] Successfully saved domain: ${domain}`);
+        debugLog(`[WHITELIST] Successfully saved domain: ${domain}`);
       }
     } catch (e) {
-      console.error('Failed to skiplist domain:', e);
+      debugError('Failed to skiplist domain:', e);
     }
   } else if (info.menuItemId === 'skiplist-url') {
     try {
@@ -265,10 +304,10 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
       if (!currentUrls.includes(urlString)) {
         currentUrls.push(urlString);
         await chrome.storage.local.set({ skiplistedUrls: currentUrls });
-        console.log(`[WHITELIST] Successfully saved URL: ${urlString}`);
+        debugLog(`[WHITELIST] Successfully saved URL: ${urlString}`);
       }
     } catch (e) {
-      console.error('Failed to skiplist URL:', e);
+      debugError('Failed to skiplist URL:', e);
     }
   }
 });
@@ -282,8 +321,8 @@ async function runValidation(folderId: string, folderPath: string) {
   const logAndTrack = (text: string, isWarning = false) => {
     const timestamp = new Date().toISOString();
     fileLogLines.push(`[${timestamp}] ${text}`);
-    if (isWarning) console.warn(text);
-    else console.log(text);
+    if (isWarning) debugWarn(text);
+    else debugLog(text);
   };
 
   logAndTrack(
@@ -491,7 +530,7 @@ async function runValidation(folderId: string, folderPath: string) {
       });
     }
   } catch (err) {
-    console.error('[FATAL ERROR] Exception in validation loop:', err);
+    debugError('[FATAL ERROR] Exception in validation loop:', err);
     currentCompletionMessage = 'An error occurred during validation.';
     currentStatusMessage = IDLE_STRING;
   } finally {
@@ -501,16 +540,16 @@ async function runValidation(folderId: string, folderPath: string) {
         await chrome.declarativeNetRequest.updateSessionRules({
           removeRuleIds: [RULE_ID],
         });
-        console.log(
+        debugLog(
           '[FINISHED] Cleared session User-Agent injection rules cleanly.'
         );
       } catch (e) {
-        console.error('Failed to clean up net rules:', e);
+        debugError('Failed to clean up net rules:', e);
       }
     }
 
     isValidationRunning = false;
-    console.log(
+    debugLog(
       '[FINISHED] Background validation worker has returned to idle state.'
     );
   }
@@ -536,7 +575,7 @@ async function moveFailedBookmarks(
       rootNodes[0];
     const safeParentId = primaryRootNode.id;
 
-    console.log(
+    debugLog(
       `[SETUP] Creating quarantine destination folder under safe root parent ID: ${safeParentId}`
     );
 
@@ -551,7 +590,7 @@ async function moveFailedBookmarks(
     try {
       await chrome.bookmarks.move(node.id, { parentId: reviewFolderId });
     } catch (e) {
-      console.error(`Failed to move bookmark ${node.id}:`, e);
+      debugError(`Failed to move bookmark ${node.id}:`, e);
     }
   }
 }
