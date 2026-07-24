@@ -1,6 +1,6 @@
-# Ultimate Bookmark Manager & Validator
+# Ultimate Bookmark Manager
 
-A modern, high-performance Chrome Extension built with **Vite**, **React**, and **TypeScript** (Manifest V3). This tool dynamically traverses nested bookmark folder hierarchies, verifies URL statuses using optimized networking handshakes, respects custom domain/URL skiplists via context menus, and compiles detailed downloadable text reports.
+An extension that performs some bookmark-related functions that I've always wanted to have in Chrome: Validating bookmarks to prune obsolete links from Chrome's Bookmarks list, Consolidating bookmark folders (moving bookmarks from one folder into another), and deleting empty bookmark folders. Built with **Vite**, **React**, and **TypeScript** (Manifest V3).
 
 ---
 
@@ -54,7 +54,7 @@ Click the Load unpacked button in the top-left corner.
 
 Select the dist folder located inside this project's root directory.
 
-Important Permission Note: Whenever you modify foundational security declarations inside public/manifest.json (such as adding host_permissions or declarativeNetRequest), you must completely Remove the extension from chrome://extensions/ and click Load Unpacked fresh to force Chrome to re-authorize the background Service Worker thread.
+**Important Permission Note:** Whenever you modify foundational security declarations inside public/manifest.json (such as adding host_permissions or declarativeNetRequest), you must completely Remove the extension from chrome://extensions/ and click Load Unpacked fresh to force Chrome to re-authorize the background Service Worker thread.
 
 ## Project Structure
 
@@ -92,3 +92,17 @@ to review. It is because of the potential for false positives that this extensio
 ### False negatives (URLs NOT detected as broken when the content linked to is no longer present)
 
 This is a more complicated problem. For most web sites, if you use a bookmark that points to content that's no longer available on the site your browser (or Chrome extension) receives an HTTP error code of 404, and often even receives a web page that goes into more detail about the problem. Some sites, however, don't behave that way- they return a successful HTTP code (200, for example) and they might display a human readable message that the content isn't available, or they might show some default index page- but from the extension's perspective, the pages loaded successfully and no errors were reported. This is a hard problem to fix, because each web site can potentially define its own behavior for this kind of situation, so it's difficult to write broken link detection logic that works across the board. Thankfully, these sites appear to be rate.
+
+### Skip lists not currently editable or exportable
+
+While you can add sites and specific pages to the skip lists to prevent the validation feature from attempting to detect them as broken, there is not currently
+an interface to edit the skip lists or to export them to a file. You can wipe out/reset your skip lists by uninstalling the extension (click "Remove") on the chrome://extensions panel for this extension. When you re-install the extension, all settings (including skip lists) will be reset.
+
+## Future Enhancements
+
+Some features I am considering adding in the future, if this extension gets any traction:
+
+- Smarter broken link detection (site-specific detection of broken links, even if HTTP 200 returned)
+- Editable skip lists
+- Exportable skip lists
+- Persistent settings/lists across different devices via registered user profiles

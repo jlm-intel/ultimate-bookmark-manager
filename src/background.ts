@@ -1,3 +1,21 @@
+/**
+ * Ultimate Bookmark Manager - Chrome Extension
+ * Copyright (C) 2026  Josh Mayfield (UltimateOutsider) <ultimateoutsider@ultimateoutsider.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 // src/background.ts
 const IDLE_STRING = 'Idle';
 const QUARANTINE_FOLDER_NAME = 'Broken Bookmarks Quarantine';
@@ -76,7 +94,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.action === 'PURGE_BROKEN_BOOKMARKS') {
     (async () => {
       try {
-        // only purge the quarantine folder, if it exists. If it doesn't exist, return a message to the user.
+        // only purge the quarantine folder if it exists. If it doesn't exist, return a message to the user.
         const existingFolders = await chrome.bookmarks.search({
           title: QUARANTINE_FOLDER_NAME,
         });
@@ -105,8 +123,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         for (let i = children.length - 1; i >= 0; i--) {
           const child = children[i];
           if (child.url) {
+            // this is a bookmark, not a folder, so we can delete it directly.
             await chrome.bookmarks.remove(child.id);
           } else {
+            // this is a folder, so we need to delete it and all of its children.
             await chrome.bookmarks.removeTree(child.id);
           }
         }
@@ -129,7 +149,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
-  // NEW: Folder Consolidation Engine
   if (message.action === 'CONSOLIDATE_FOLDERS') {
     (async () => {
       try {
@@ -139,6 +158,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         const subTree = await chrome.bookmarks.getSubTree(sourceId);
 
         // This operation only moves root-level bookmarks, not subfolders or nested bookmarks. This is intentional.
+        // If a node has an url property, it is a bookmark. If it has children, it is a folder.
         const bookmarkChildren =
           subTree[0].children?.filter((node) => node.url) || [];
 
@@ -260,12 +280,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 // Create context menus together on install
 chrome.runtime.onInstalled.addListener(() => {
+  // create site-wide skiplist context menu item
   chrome.contextMenus.create({
     id: 'skiplist-domain',
     title: 'Skip this whole site when validating bookmarks',
     contexts: ['page', 'link'],
   });
 
+  // create page-specific skiplist context menu item
   chrome.contextMenus.create({
     id: 'skiplist-url',
     title: 'Skip this specific page when validating bookmarks',
@@ -289,7 +311,7 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
       if (!currentDomains.includes(domain)) {
         currentDomains.push(domain);
         await chrome.storage.local.set({ skiplistedDomains: currentDomains });
-        debugLog(`[WHITELIST] Successfully saved domain: ${domain}`);
+        debugLog(`[SKIPLIST] Successfully saved domain: ${domain}`);
       }
     } catch (e) {
       debugError('Failed to skiplist domain:', e);
@@ -304,7 +326,7 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
       if (!currentUrls.includes(urlString)) {
         currentUrls.push(urlString);
         await chrome.storage.local.set({ skiplistedUrls: currentUrls });
-        debugLog(`[WHITELIST] Successfully saved URL: ${urlString}`);
+        debugLog(`[SKIPLIST] Successfully saved URL: ${urlString}`);
       }
     } catch (e) {
       debugError('Failed to skiplist URL:', e);
@@ -330,7 +352,8 @@ async function runValidation(folderId: string, folderPath: string) {
   );
 
   try {
-    // --- INJECT BROWSER USER-AGENT ---
+    // Some sites block requests from extensions, so we inject a real browser User-Agent to bypass bot filters.
+    // This is done using the declarativeNetRequest API, which is available in Manifest V3.
     if (typeof chrome !== 'undefined' && chrome.declarativeNetRequest) {
       logAndTrack(
         `[CONFIG] Injecting Chrome Browser User-Agent ID to bypass bot filters.`
@@ -387,23 +410,24 @@ async function runValidation(folderId: string, folderPath: string) {
     } catch (e) {
       // Storage unavailable fallbacks handled implicitly
     }
-
-    const timeoutDurationMs =
-      typeof timeoutSecondsSetting === 'number'
-        ? timeoutSecondsSetting * 1000
-        : parseFloat(timeoutSecondsSetting) * 1000;
-
-    logAndTrack(
-      `[CONFIG] Using timeout configuration: ${timeoutSecondsSetting}s`
-    );
     logAndTrack(
       `[CONFIG] Loaded ${skiplistedDomains.length} domains and ${skiplistedUrls.length} URLs in skiplist.`
     );
 
+    // timeout duration is for determining how long to wait for a response before aborting a fetch request.
+    // It is converted to milliseconds for use with setTimeout.
+    const timeoutDurationMs =
+      typeof timeoutSecondsSetting === 'number'
+        ? timeoutSecondsSetting * 1000
+        : parseFloat(timeoutSecondsSetting) * 1000;
+    logAndTrack(
+      `[CONFIG] Using timeout configuration: ${timeoutSecondsSetting}s`
+    );
+
     const subTree = await chrome.bookmarks.getSubTree(folderId);
+    // Filter out only the bookmark nodes (those with a URL) from the subtree
     const bookmarkLinks = subTree[0].children?.filter((node) => node.url) || [];
     const total = bookmarkLinks.length;
-
     const failedBookmarks: chrome.bookmarks.BookmarkTreeNode[] = [];
 
     for (let i = 0; i < total; i++) {
@@ -413,7 +437,7 @@ async function runValidation(folderId: string, folderPath: string) {
       const currentItemNumber = i + 1;
       currentStatusMessage = `Checking link ${currentItemNumber} of ${total}...`;
 
-      // --- EVALUATE WHITELISTS BEFORE SCANNING ---
+      // check if the link is skiplisted by exact URL or by domain
       let isSkiplisted = false;
       let skiplistReason = '';
 
@@ -432,6 +456,7 @@ async function runValidation(folderId: string, folderPath: string) {
         }
       }
 
+      // log and skip to next if item is skiplisted
       if (isSkiplisted) {
         logAndTrack(
           `[SKIPPED] Item ${currentItemNumber}/${total} | Reason: ${skiplistReason} | URL: ${link.url}`
@@ -439,29 +464,33 @@ async function runValidation(folderId: string, folderPath: string) {
         continue;
       }
 
-      // --- PROCEED WITH NORMAL SCAN IF NOT WHITELISTED ---
+      // if we're here, the link is not skiplisted, so we can proceed
       logAndTrack(
         `[CHECKING] Item ${currentItemNumber}/${total} | URL: ${link.url}`
       );
 
       let isBroken = false;
       let invalidationReason = '';
-      let response: Response | null = null; // 1. Scope the live response object to the entire iteration step
+      // response is a TypeScript Union type that can be either a Response object or null. We initialize it to null at the start of each iteration.
+      let response: Response | null = null;
 
       try {
+        // set up the AbortController and timeout for the fetch request.
         const controller = new AbortController();
         const timeoutId = setTimeout(
           () => controller.abort(),
           timeoutDurationMs
         );
 
-        // 2. Remove "let" so it updates our wider scoped variable
+        // perform a HEAD request first to check the link's status without downloading the entire content.
         response = await fetch(link.url, {
           method: 'HEAD',
           signal: controller.signal,
         });
         clearTimeout(timeoutId);
 
+        // immediate retry on bad request, forbidden, or method not allowed responses, as some servers may not support HEAD requests properly,
+        // so we try a GET request instead.
         if (
           response.status === 405 ||
           response.status === 403 ||
@@ -474,7 +503,6 @@ async function runValidation(folderId: string, folderPath: string) {
             timeoutDurationMs
           );
 
-          // Remove "let" here as well so the fallback updates the same reference
           response = await fetch(link.url, {
             method: 'GET',
             signal: getController.signal,
@@ -494,9 +522,10 @@ async function runValidation(folderId: string, folderPath: string) {
             : `Network/DNS Error (${error.message})`;
       }
 
-      // 3. Your log code can now cleanly read the live object safely!
+      // if we have a response object, we can get the status code from it. If not, we set the status code to 0 to indicate that no response was received.
       const finalHttpCode = response ? response.status : 0;
 
+      // log whether this bookmark is valid or invalid, and if invalid, log the reason and add it to the failedBookmarks array for later processing.
       if (isBroken) {
         logAndTrack(
           `[INVALID] HTTP Code ${finalHttpCode} | Reason: ${invalidationReason} | URL: ${link.url}`,
@@ -508,6 +537,7 @@ async function runValidation(folderId: string, folderPath: string) {
       }
     }
 
+    // if we identified any broken bookmarks, we move them to the quarantine folder.
     if (failedBookmarks.length > 0) {
       currentStatusMessage = `Moving ${failedBookmarks.length} broken links...`;
       await moveFailedBookmarks(failedBookmarks);
@@ -517,7 +547,7 @@ async function runValidation(folderId: string, folderPath: string) {
     }
     currentStatusMessage = IDLE_STRING;
 
-    // --- TRIGGER FILE DOWNLOAD ---
+    // Download validation report as a text file for user reference. The report is base64-encoded to ensure proper handling of special characters and line breaks.
     const fullLogText = fileLogLines.join('\n');
     const base64LogData = btoa(unescape(encodeURIComponent(fullLogText)));
     const finalDownloadUrl = `data:text/plain;charset=utf-8;base64,${base64LogData}`;
@@ -525,7 +555,7 @@ async function runValidation(folderId: string, folderPath: string) {
     if (typeof chrome !== 'undefined' && chrome.downloads) {
       await chrome.downloads.download({
         url: finalDownloadUrl,
-        filename: 'bookmark-validator-report.txt',
+        filename: 'bookmark-validation-report.txt',
         saveAs: false,
       });
     }
@@ -534,7 +564,7 @@ async function runValidation(folderId: string, folderPath: string) {
     currentCompletionMessage = 'An error occurred during validation.';
     currentStatusMessage = IDLE_STRING;
   } finally {
-    // --- CLEAN UP DEE RULES ---
+    // remove the User-Agent injection rule to clean up after ourselves
     if (typeof chrome !== 'undefined' && chrome.declarativeNetRequest) {
       try {
         await chrome.declarativeNetRequest.updateSessionRules({
@@ -558,17 +588,21 @@ async function runValidation(folderId: string, folderPath: string) {
 async function moveFailedBookmarks(
   failedNodes: chrome.bookmarks.BookmarkTreeNode[]
 ) {
+  // check for an existing quarantine folder.
   const existingFolders = await chrome.bookmarks.search({
     title: QUARANTINE_FOLDER_NAME,
   });
   let reviewFolderId = '';
 
   if (existingFolders.length > 0) {
+    // folder found; use its folder id
     reviewFolderId = existingFolders[0].id;
   } else {
+    // not found; create a new quarantine folder under the "Other Bookmarks" root node, or fallback to "Bookmarks Bar" if necessary.
     const rootNodes = await chrome.bookmarks.getTree();
 
-    // --- UPDATED: Targets index 1 (Other Bookmarks) with index 0 (Bookmarks Bar) as safety fallback ---
+    // index 1 = "Other Bookmarks" (preferred)
+    // index 0 = "Bookmarks Bar" (fallback)
     const primaryRootNode =
       rootNodes[0]?.children?.[1] ||
       rootNodes[0]?.children?.[0] ||
@@ -586,6 +620,7 @@ async function moveFailedBookmarks(
     reviewFolderId = newFolder.id;
   }
 
+  // now we just move each failed bookmark into the quarantine folder.
   for (const node of failedNodes) {
     try {
       await chrome.bookmarks.move(node.id, { parentId: reviewFolderId });

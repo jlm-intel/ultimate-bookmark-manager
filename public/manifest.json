@@ -12,10 +12,22 @@
   ],
   "host_permissions": ["<all_urls>"],
   "action": {
-    "default_popup": "index.html"
+    "default_popup": "index.html",
+    "default_icon": {
+      "16": "icons/bookmark-manager-16.png",
+      "32": "icons/bookmark-manager-32.png",
+      "48": "icons/bookmark-manager-48.png",
+      "128": "icons/bookmark-manager-128.png"
+    }
   },
   "background": {
     "service_worker": "background.js",
     "type": "module"
+  },
+  "icons": {
+    "16": "icons/bookmark-manager-16.png",
+    "32": "icons/bookmark-manager-32.png",
+    "48": "icons/bookmark-manager-48.png",
+    "128": "icons/bookmark-manager-128.png"
   }
 }

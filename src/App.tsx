@@ -1,3 +1,22 @@
+/**
+ * Ultimate Bookmark Manager - Chrome Extension
+ * Copyright (C) 2026  Josh Mayfield (UltimateOutsider) <ultimateoutsider@ultimateoutsider.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+// src/App.tsx
 import { useEffect, useState } from 'react';
 const IDLE_STRING = 'Idle';
 
@@ -7,9 +26,10 @@ interface BookmarkFolder {
 }
 
 function App() {
+  // React useState hooks for managing component state
   const [folders, setFolders] = useState<BookmarkFolder[]>([]);
-  const [selectedFolderId, setSelectedFolderId] = useState<string>('');
-  const [targetFolderId, setTargetFolderId] = useState<string>(''); // NEW: Target folder state tracking
+  const [sourceFolderId, setSourceFolderId] = useState<string>('');
+  const [targetFolderId, setTargetFolderId] = useState<string>('');
   const [isWorkerRunning, setIsWorkerRunning] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string>(
     'Checking worker status...'
@@ -19,6 +39,7 @@ function App() {
   const [isDebugLoggingEnabled, setIsDebugLoggingEnabled] =
     useState<boolean>(false);
 
+  // Function to check the status of the background worker
   const checkWorkerStatus = () => {
     if (typeof chrome !== 'undefined' && chrome.runtime) {
       chrome.runtime.sendMessage({ action: 'GET_STATUS' }, (response) => {
@@ -34,6 +55,7 @@ function App() {
   };
 
   useEffect(() => {
+    // React useEffect hook to fetch bookmark folders and initialize state on component mount
     if (typeof chrome !== 'undefined' && chrome.bookmarks) {
       chrome.bookmarks.getTree((treeNodes) => {
         const folderList: BookmarkFolder[] = [];
@@ -60,27 +82,17 @@ function App() {
           }
         };
 
+        // Find all bookmark folders and populate the folder list controls
         findFolders(treeNodes);
         setFolders(folderList);
         if (folderList.length > 0) {
-          setSelectedFolderId(folderList[0].id);
-          setTargetFolderId(folderList[0].id); // Initialize target to first available folder index
+          setSourceFolderId(folderList[0].id);
+          setTargetFolderId(folderList[0].id);
         }
       });
     }
 
-    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-      chrome.storage.local.get({ timeoutSeconds: 5.0 }, (result) => {
-        const storageData = result as { timeoutSeconds: number | string };
-        setTimeoutSeconds(storageData.timeoutSeconds.toString());
-      });
-    } else {
-      console.log(
-        '[ENV CHECK] Running outside of extension popup context. Defaulting local UI view state.'
-      );
-      setTimeoutSeconds('5.0');
-    }
-
+    // Load persistent settings from chrome.storage.local if available
     if (typeof chrome !== 'undefined' && chrome.storage?.local) {
       chrome.storage.local.get(
         { timeoutSeconds: 5.0, isDebugLoggingEnabled: false },
@@ -93,14 +105,22 @@ function App() {
           setIsDebugLoggingEnabled(storageData.isDebugLoggingEnabled ?? false);
         }
       );
+    } else {
+      console.log(
+        '[ENV CHECK] Running outside of extension popup context. Defaulting local UI view state.'
+      );
+      setTimeoutSeconds('5.0');
+      setIsDebugLoggingEnabled(false);
     }
 
+    // Do an initial check of the worker status and set up a periodic interval to poll it
     checkWorkerStatus();
     const interval = setInterval(checkWorkerStatus, 1000);
     return () => clearInterval(interval);
   }, []);
 
   const handleTimeoutChange = (value: string) => {
+    // Update the timeoutSeconds state and persist the value to chrome.storage.local if valid
     setTimeoutSeconds(value);
     const parsedFloat = parseFloat(value);
     if (!isNaN(parsedFloat) && parsedFloat > 0) {
@@ -111,6 +131,7 @@ function App() {
   };
 
   const handleDebugLoggingChange = (enabled: boolean) => {
+    // Update the isDebugLoggingEnabled state and persist the value to chrome.storage.local
     setIsDebugLoggingEnabled(enabled);
     if (typeof chrome !== 'undefined' && chrome.storage?.local) {
       chrome.storage.local.set({ isDebugLoggingEnabled: enabled });
@@ -118,15 +139,16 @@ function App() {
   };
 
   const handleValidate = () => {
-    if (!selectedFolderId) return;
+    // Trigger the validation process by sending a message to the background script
+    if (!sourceFolderId) return;
     setIsWorkerRunning(true);
 
-    const selectedFolder = folders.find((f) => f.id === selectedFolderId);
-    const folderPath = selectedFolder ? selectedFolder.title : selectedFolderId;
+    const sourceFolder = folders.find((f) => f.id === sourceFolderId);
+    const folderPath = sourceFolder ? sourceFolder.title : sourceFolderId;
 
     chrome.runtime.sendMessage({
       action: 'START_VALIDATION',
-      folderId: selectedFolderId,
+      folderId: sourceFolderId,
       folderPath: folderPath,
     });
   };
@@ -137,6 +159,7 @@ function App() {
     );
     if (!confirmed) return;
 
+    // kick off purge action by sending a message to the background script
     if (typeof chrome !== 'undefined' && chrome.runtime) {
       setStatusMessage('Purging broken bookmarks quarantine folder...');
       chrome.runtime.sendMessage(
@@ -157,18 +180,22 @@ function App() {
 
   // NEW: Consolidation Handler Execution Script
   const handleConsolidate = () => {
-    if (!selectedFolderId || !targetFolderId) return;
+    // don't proceed if either source or target folder is not selected
+    if (!sourceFolderId || !targetFolderId) return;
 
-    if (selectedFolderId === targetFolderId) {
+    // don't allow consolidation if source and target folders are the same
+    if (sourceFolderId === targetFolderId) {
       alert(
         'Source folder and Target folder cannot be the same directory location.'
       );
       return;
     }
 
-    const sourceFolder = folders.find((f) => f.id === selectedFolderId);
+    // get handles for the source and target folders to display their titles in the confirmation dialog
+    const sourceFolder = folders.find((f) => f.id === sourceFolderId);
     const targetFolder = folders.find((f) => f.id === targetFolderId);
 
+    // show a confirmation dialog to the user before proceeding with the consolidation
     const confirmed = window.confirm(
       `Are you sure you want to consolidate these bookmarks?\n\n` +
         `Source (From): "${sourceFolder?.title}"\n` +
@@ -178,12 +205,13 @@ function App() {
 
     if (!confirmed) return;
 
+    // if user confirms, send a message to the background script to perform the consolidation
     if (typeof chrome !== 'undefined' && chrome.runtime) {
       setStatusMessage('Consolidating folders...');
       chrome.runtime.sendMessage(
         {
           action: 'CONSOLIDATE_FOLDERS',
-          sourceId: selectedFolderId,
+          sourceId: sourceFolderId,
           targetId: targetFolderId,
         },
         (response) => {
@@ -206,6 +234,7 @@ function App() {
     );
     if (!confirmed) return;
 
+    // kick off the empty folder sweep action by sending a message to the background script
     if (typeof chrome !== 'undefined' && chrome.runtime) {
       setStatusMessage('Sweeping tree for empty folders...');
       chrome.runtime.sendMessage(
@@ -224,6 +253,7 @@ function App() {
     }
   };
 
+  // Render the main UI of the extension popup
   return (
     <div
       style={{
@@ -254,8 +284,8 @@ function App() {
           </label>
           <select
             id="folder-select"
-            value={selectedFolderId}
-            onChange={(e) => setSelectedFolderId(e.target.value)}
+            value={sourceFolderId}
+            onChange={(e) => setSourceFolderId(e.target.value)}
             disabled={isWorkerRunning}
             style={{
               width: '100%',
@@ -305,7 +335,7 @@ function App() {
         {/* Main Validation Button */}
         <button
           onClick={handleValidate}
-          disabled={isWorkerRunning || !selectedFolderId}
+          disabled={isWorkerRunning || !sourceFolderId}
           style={{
             width: '100%',
             padding: '8px',
@@ -322,20 +352,20 @@ function App() {
         {/* Consolidate Folders Action Button */}
         <button
           onClick={handleConsolidate}
-          disabled={isWorkerRunning || !selectedFolderId || !targetFolderId}
+          disabled={isWorkerRunning || !sourceFolderId || !targetFolderId}
           style={{
             width: '100%',
             padding: '8px',
             marginTop: '8px',
             backgroundColor:
-              isWorkerRunning || selectedFolderId === targetFolderId
+              isWorkerRunning || sourceFolderId === targetFolderId
                 ? '#A0A0A0'
                 : '#5590f1',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
             cursor:
-              isWorkerRunning || selectedFolderId === targetFolderId
+              isWorkerRunning || sourceFolderId === targetFolderId
                 ? 'not-allowed'
                 : 'pointer',
           }}
@@ -376,7 +406,7 @@ function App() {
             cursor: isWorkerRunning ? 'not-allowed' : 'pointer',
           }}
         >
-          Clean Empty Folders
+          Delete Empty Bookmark Folders
         </button>
 
         {/* System Status Message Card */}
@@ -495,7 +525,7 @@ function App() {
           bookmarks placed in quarantine to see if any were wrongly flagged. You
           can skiplist these pages (or domains) to prevent them from being
           flagged in the future. Will automatically download a
-          "bookmark-validator-report.txt" file containing the validation
+          "bookmark-validation-report.txt" file containing the validation
           results.
         </p>
 
@@ -512,9 +542,9 @@ function App() {
         </p>
 
         <p>
-          <strong>Clean Empty Folders:</strong> Recursively scans your entire
-          browser tree to identify and cleanly delete nested folders containing
-          0 bookmarks or folders.
+          <strong>Delete Empty Bookmark Folders:</strong> Recursively scans your
+          entire browser tree to identify and cleanly delete nested folders
+          containing 0 bookmarks or folders.
         </p>
 
         <p>
