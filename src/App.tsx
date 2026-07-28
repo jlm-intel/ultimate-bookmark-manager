@@ -513,7 +513,7 @@ function App() {
         }}
       >
         {/* EXCLUSION: Heading 4 alignment can be custom set here (e.g., center) */}
-        <h4 style={{ marginTop: 0, color: '#18181b', textAlign: 'center' }}>
+        <h4 style={{ marginTop: 0, textAlign: 'center' }}>
           User Guide & Quick Tips
         </h4>
 
