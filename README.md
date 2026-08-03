@@ -98,6 +98,11 @@ This is a more complicated problem. For most web sites, if you use a bookmark th
 While you can add sites and specific pages to the skip lists to prevent the validation feature from attempting to detect them as broken, there is not currently
 an interface to edit the skip lists or to export them to a file. You can wipe out/reset your skip lists by uninstalling the extension (click "Remove") on the chrome://extensions panel for this extension. When you re-install the extension, all settings (including skip lists) will be reset.
 
+### Chrome automatically kills very long validation tasks
+
+If you have a folder with thousands of URLs to validate, Chrome might kill the service worker thread performing the validation task due to the Manifest V3 limitation
+that individual background tasks can't exceed 5 minutes of duration. I have a plan to deal with this in future updates.
+
 ## Future Enhancements
 
 Some features I am considering adding in the future, if this extension gets any traction:
@@ -106,3 +111,5 @@ Some features I am considering adding in the future, if this extension gets any 
 - Editable skip lists
 - Exportable skip lists
 - Persistent settings/lists across different devices via registered user profiles
+- Full tab UI instead of default popup for better UI stability when users click away from the extension
+- Handling of very long validation jobs (Chrome automatically kills any background task that exceeds 5 minutes)
